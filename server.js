@@ -565,20 +565,37 @@ app.get("/admin", (req, res) => {
 
   const hostBase = req.protocol + "://" + req.get("host");
 
+  // ── Filter bulan ──────────────────────────────────────────
+  const now        = new Date();
+  const bulanOpts  = Array.from({length:12},(_,i)=>{
+    const d = new Date(now.getFullYear(), i, 1);
+    const lbl = d.toLocaleDateString("id-ID",{month:"long",year:"numeric"});
+    const val = `${now.getFullYear()}-${String(i+1).padStart(2,"0")}`;
+    return { val, lbl, sel: i === now.getMonth() };
+  });
+  const filterBulanOpts = bulanOpts.map(o=>
+    `<option value="${o.val}" ${o.sel?"selected":""}>${o.lbl}</option>`
+  ).join("");
+
   const rows = db.members.map(m => {
     const pct         = Math.round(m.totalMain / BATAS_MAIN * 100);
     const isGratis    = m.status === "GRATIS";
     const scanUrl     = hostBase + "/scan?id=" + m.kode;
     const tglDaftar   = m.tanggalDaftar ? new Date(m.tanggalDaftar).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}) : "—";
     const tglTerakhir = m.tanggalScanTerakhir ? new Date(m.tanggalScanTerakhir).toLocaleDateString("id-ID",{day:"numeric",month:"short"}) : "—";
-    return `<tr>
+    // Bulan terakhir scan untuk filter
+    const bulanScan   = m.tanggalScanTerakhir
+      ? new Date(m.tanggalScanTerakhir).toLocaleDateString("id-ID",{year:"numeric",month:"2-digit"}).split("/").reverse().join("-")
+      : "";
+    const telepon     = m.telepon || "—";
+    return `<tr data-bulan="${bulanScan}">
       <td>
         <span style="font-family:monospace;font-size:12px;font-weight:700;color:var(--green)">${m.kode}</span>
         <div style="font-size:11px;color:var(--txt3);margin-top:2px">${tglDaftar}</div>
       </td>
       <td>
         <div style="font-size:13px;font-weight:500;color:var(--txt)">${m.nama}</div>
-        <div style="font-size:11px;color:var(--txt3);margin-top:2px">Main terakhir: ${tglTerakhir}</div>
+        <div style="font-size:11px;color:var(--txt3);margin-top:2px;font-family:monospace">${telepon}</div>
       </td>
       <td>
         ${isGratis
@@ -978,10 +995,18 @@ app.get("/admin", (req, res) => {
          onclick="return confirm('Reset scan harian semua member?')">↺ Reset Harian</a>
     </div>
 
-    <div class="search-wrap">
-      <span class="search-icon">🔍</span>
-      <input class="search-input" type="text" id="cari"
-             placeholder="Cari nama atau kode member…" oninput="filterTabel(this.value)">
+    <!-- Filter & search bar -->
+    <div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-2);flex-wrap:wrap">
+      <div class="search-wrap" style="flex:1;min-width:180px;margin-bottom:0">
+        <span class="search-icon">🔍</span>
+        <input class="search-input" type="text" id="cari"
+               placeholder="Cari nama, kode, atau no. HP…" oninput="filterTabel()">
+      </div>
+      <select id="filterBulan" onchange="filterTabel()"
+        style="padding:var(--sp-2) var(--sp-3);background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-md);color:var(--txt);font-size:var(--fs-base);outline:none;cursor:pointer;font-family:var(--ff)">
+        <option value="">Semua bulan</option>
+        ${filterBulanOpts}
+      </select>
     </div>
 
     <div class="card">
@@ -989,7 +1014,7 @@ app.get("/admin", (req, res) => {
         <table id="tabel">
           <thead><tr>
             <th>Kode</th>
-            <th>Nama</th>
+            <th>Nama &amp; No. HP</th>
             <th>Progress</th>
             <th>Status</th>
             <th>Reward</th>
@@ -999,6 +1024,9 @@ app.get("/admin", (req, res) => {
             ${rows || `<tr><td colspan="6" class="empty-state">Belum ada member terdaftar</td></tr>`}
           </tbody>
         </table>
+      </div>
+      <div id="empty-filter" class="empty-state" style="display:none;border-top:1px solid var(--border)">
+        Tidak ada member di bulan ini
       </div>
     </div>
 
@@ -1042,11 +1070,25 @@ app.get("/admin", (req, res) => {
     });
   }
 
-  function filterTabel(q) {
-    const s = q.toLowerCase();
+  function filterTabel() {
+    const q     = (document.getElementById("cari").value || "").toLowerCase();
+    const bulan = document.getElementById("filterBulan").value;
+    let visible = 0;
     document.querySelectorAll("#tbody tr").forEach(r => {
-      r.style.display = (!s || r.textContent.toLowerCase().includes(s)) ? "" : "none";
+      const matchQ = !q || r.textContent.toLowerCase().includes(q);
+      const rowBulan = r.getAttribute("data-bulan") || "";
+      // Cocokkan format: bulan = "2026-05", rowBulan = "05/2026" atau "2026-05"
+      let matchB = true;
+      if (bulan) {
+        const [yr, mo] = bulan.split("-");
+        matchB = rowBulan.includes(yr) && rowBulan.includes(mo);
+      }
+      const show = matchQ && matchB;
+      r.style.display = show ? "" : "none";
+      if (show) visible++;
     });
+    const emptyEl = document.getElementById("empty-filter");
+    if (emptyEl) emptyEl.style.display = visible === 0 ? "block" : "none";
   }
   </script>
   </body></html>`);
@@ -1073,11 +1115,63 @@ app.get("/admin/edit", (req, res) => {
   const { nama } = req.query;
   if (nama && nama.trim()) {
     m.nama = nama.trim();
+    // Update telepon jika ada
+    const tlpRaw2 = (req.query.tlp || "").replace(/[^0-9]/g, "");
+    if (tlpRaw2.length >= 8) {
+      let t2 = tlpRaw2;
+      if (t2.startsWith("0"))  t2 = t2.slice(1);
+      if (t2.startsWith("62")) t2 = t2.slice(2);
+      m.telepon = "+62 " + t2.replace(/(\d{3})(\d{4})(\d+)/, "$1-$2-$3");
+    }
     db.members[idx] = m;
     simpanDB(db);
     return res.redirect("/admin?tk=" + tk);
   }
-  res.send("<!DOCTYPE html><html lang='id'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Edit Member</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#080e18;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{background:#0d1829;border:1px solid #1e2d45;border-radius:20px;padding:28px 22px;max-width:380px;width:100%}.back{display:flex;align-items:center;gap:6px;font-size:13px;color:#3b82f6;text-decoration:none;margin-bottom:20px}h1{font-size:20px;font-weight:700;color:#e2e8f0;margin-bottom:4px}.kode-tag{font-family:monospace;font-size:12px;color:#4ade80;margin-bottom:20px;display:block}label{display:block;font-size:12px;color:#64748b;margin-bottom:6px;font-weight:500}input{width:100%;padding:13px 14px;background:#0a1422;border:1.5px solid #1e3a5f;border-radius:12px;font-size:15px;color:#e2e8f0;outline:none;margin-bottom:20px}input:focus{border-color:#3b82f6}button{width:100%;background:#2563eb;color:#fff;border:none;border-radius:12px;padding:13px;font-size:15px;font-weight:700;cursor:pointer}</style></head><body><div class='card'><a href='/admin?tk=" + tk + "' class='back'>← Kembali</a><h1>Edit Nama Member</h1><span class='kode-tag'>" + kode + "</span><form action='/admin/edit' method='get'><input type='hidden' name='tk' value='" + tk + "'><input type='hidden' name='kode' value='" + kode + "'><label>Nama Baru</label><input type='text' name='nama' value='" + m.nama.replace(/'/g, "\'") + "' required autofocus autocomplete='off'><button type='submit'>Simpan Perubahan</button></form></div></body></html>");
+  const tlpEdit = (m.telepon || "").replace("+62 ","").replace(/[^0-9]/g,"");
+  res.send(`<!DOCTYPE html><html lang='id'><head><meta charset='UTF-8'>
+  <meta name='viewport' content='width=device-width,initial-scale=1'>
+  <title>Edit Member</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#080e18;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+    .card{background:#0d1829;border:1px solid #1e2d45;border-radius:20px;padding:28px 22px;max-width:400px;width:100%}
+    .back{display:flex;align-items:center;gap:6px;font-size:13px;color:#3b82f6;text-decoration:none;margin-bottom:20px}
+    h1{font-size:20px;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+    .kode-tag{font-family:monospace;font-size:12px;color:#22c55e;margin-bottom:20px;display:block}
+    .fw{margin-bottom:16px}
+    label{display:block;font-size:12px;color:#64748b;margin-bottom:6px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+    input{width:100%;padding:13px 14px;background:#0a1422;border:1.5px solid #1e3a5f;border-radius:12px;font-size:15px;color:#e2e8f0;outline:none;font-family:inherit}
+    input:focus{border-color:#3b82f6}
+    .tel-wrap{display:flex}
+    .pre{background:#111f35;border:1.5px solid #1e3a5f;border-right:none;border-radius:12px 0 0 12px;padding:13px 12px;font-size:15px;color:#475569;white-space:nowrap}
+    .tel-wrap input{border-radius:0 12px 12px 0}
+    .hint{font-size:11px;color:#334155;margin-top:5px}
+    button{width:100%;background:#2563eb;color:#fff;border:none;border-radius:12px;padding:13px;font-size:15px;font-weight:700;cursor:pointer;margin-top:6px}
+  </style>
+  </head><body><div class='card'>
+  <a href='/admin?tk=${tk}' class='back'>← Kembali</a>
+  <h1>Edit Member</h1>
+  <span class='kode-tag'>${kode}</span>
+  <form action='/admin/edit' method='get'>
+    <input type='hidden' name='tk' value='${tk}'>
+    <input type='hidden' name='kode' value='${kode}'>
+    <div class='fw'>
+      <label>Nama</label>
+      <input type='text' name='nama' value='${m.nama}' required autofocus autocomplete='off'>
+    </div>
+    <div class='fw'>
+      <label>No. Telepon</label>
+      <div class='tel-wrap'>
+        <span class='pre'>+62</span>
+        <input type='tel' name='tlp' value='${tlpEdit}'
+               placeholder='81234567890' autocomplete='off' inputmode='numeric'
+               oninput='this.value=this.value.replace(/[^0-9]/g,"")'>
+      </div>
+      <p class='hint'>Kosongkan jika tidak ingin mengubah nomor</p>
+    </div>
+    <button type='submit'>Simpan Perubahan</button>
+  </form>
+  </div></body></html>`);
 });
 
 // ── KLAIM REWARD ─────────────────────────────────────────────
@@ -1130,39 +1224,90 @@ app.get("/admin/tambah", (req, res) => {
   if (!pin || pin !== ADMIN_PIN) return res.redirect("/admin");
   const { nama } = req.query;
 
+  const errTelepon = req.query.errtlp ? "Nomor tidak valid. Masukkan 10–13 digit, diawali 08 atau +62." : "";
   if (!nama) return res.send(`<!DOCTYPE html><html lang="id"><head>
     <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
     <title>Tambah Member — ${NAMA_ARENA}</title>
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
       body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#080e18;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-      .card{background:#0d1829;border:1px solid #1e2d45;border-radius:20px;padding:28px 22px;max-width:380px;width:100%}
+      .card{background:#0d1829;border:1px solid #1e2d45;border-radius:20px;padding:28px 22px;max-width:400px;width:100%}
       .back{display:flex;align-items:center;gap:6px;font-size:13px;color:#3b82f6;text-decoration:none;margin-bottom:20px}
       h1{font-size:20px;font-weight:700;color:#e2e8f0;margin-bottom:4px}
       .sub{font-size:13px;color:#475569;margin-bottom:24px}
-      label{display:block;font-size:12px;color:#64748b;margin-bottom:6px;font-weight:500}
-      input[type=text]{width:100%;padding:13px 14px;background:#0a1422;border:1.5px solid #1e3a5f;border-radius:12px;font-size:15px;color:#e2e8f0;outline:none;margin-bottom:20px}
-      input[type=text]:focus{border-color:#3b82f6}
-      input::placeholder{color:#334155}
-      button{width:100%;background:#2563eb;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+      .field-wrap{margin-bottom:18px}
+      label{display:block;font-size:12px;color:#64748b;margin-bottom:6px;font-weight:600;letter-spacing:.04em;text-transform:uppercase}
+      .hint{font-size:11px;color:#334155;margin-top:5px}
+      input[type=text],input[type=tel]{width:100%;padding:13px 14px;background:#0a1422;border:1.5px solid #1e3a5f;border-radius:12px;font-size:15px;color:#e2e8f0;outline:none;font-family:inherit}
+      input:focus{border-color:#3b82f6}
+      input::placeholder{color:#2a3a52}
+      input.err-field{border-color:#ef4444}
+      .err-msg{font-size:12px;color:#f87171;margin-top:6px;padding:8px 10px;background:rgba(239,68,68,.08);border-radius:8px;border:1px solid rgba(239,68,68,.2)}
+      .tel-prefix{display:flex;align-items:stretch;gap:0}
+      .tel-pre{background:#111f35;border:1.5px solid #1e3a5f;border-right:none;border-radius:12px 0 0 12px;padding:13px 12px;font-size:15px;color:#475569;white-space:nowrap;user-select:none}
+      .tel-prefix input{border-radius:0 12px 12px 0}
+      button{width:100%;background:#2563eb;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;margin-top:4px}
       button:active{opacity:.85}
     </style>
     </head><body><div class="card">
     <a href="/admin?tk=${tk}" class="back">← Kembali ke dashboard</a>
     <h1>Tambah Member Baru</h1>
-    <p class="sub">Kode member dibuat otomatis — cukup masukkan nama.</p>
-    <form action="/admin/tambah" method="get">
+    <p class="sub">Kode member dibuat otomatis.</p>
+    <form action="/admin/tambah" method="get" id="frm">
       <input type="hidden" name="tk" value="${tk}">
-      <label>Nama Lengkap Member</label>
-      <input type="text" name="nama" placeholder="contoh: Budi Santoso" required autofocus autocomplete="off">
-      <button type="submit">＋ Daftarkan Member</button>
+
+      <div class="field-wrap">
+        <label>Nama Lengkap</label>
+        <input type="text" name="nama" placeholder="contoh: Budi Santoso"
+               required autofocus autocomplete="off">
+      </div>
+
+      <div class="field-wrap">
+        <label>No. Telepon <span style="color:#ef4444">*</span></label>
+        <div class="tel-prefix">
+          <span class="tel-pre">+62</span>
+          <input type="tel" id="tlpInput" name="tlp" placeholder="81234567890"
+                 required autocomplete="off" inputmode="numeric"
+                 oninput="this.value=this.value.replace(/[^0-9]/g,'')"
+                 class="${errTelepon ? 'err-field' : ''}">
+        </div>
+        ${errTelepon ? `<div class="err-msg">${errTelepon}</div>` : ""}
+        <p class="hint">Hanya angka. Contoh: 81234567890 (tanpa 0 di depan karena sudah ada +62)</p>
+      </div>
+
+      <button type="submit" onclick="return validasiForm()">＋ Daftarkan Member</button>
     </form>
+    <script>
+    function validasiForm() {
+      const tlp = document.getElementById("tlpInput").value.replace(/\D/g,"");
+      if (tlp.length < 8 || tlp.length > 12) {
+        document.getElementById("tlpInput").classList.add("err-field");
+        return false;
+      }
+      return true;
+    }
+    </script>
     </div></body></html>`);
+
+  // Ambil dan validasi nomor telepon
+  const tlpRaw  = (req.query.tlp || "").replace(/\D/g, "");
+  // Normalisasi: kalau user ketik 08xxx → strip 0 depan, kalau 8xxx biarkan
+  // Format simpan: 62xxxxxxxx (tanpa + )
+  let tlpBersih = tlpRaw;
+  if (tlpBersih.startsWith("0"))  tlpBersih = tlpBersih.slice(1);
+  if (tlpBersih.startsWith("62")) tlpBersih = tlpBersih.slice(2);
+  const tlpFull = "62" + tlpBersih;
+  const tlpDisplay = "+62 " + tlpBersih.replace(/(\d{3})(\d{4})(\d+)/, "$1-$2-$3");
+
+  // Validasi: panjang 8–12 digit setelah strip prefix
+  if (tlpBersih.length < 8 || tlpBersih.length > 12) {
+    return res.redirect("/admin/tambah?tk=" + req.query.tk + "&errtlp=1");
+  }
 
   const db  = bacaDB();
   const ku  = generateKode(db.members);
   db.members.push({
-    kode: ku, nama: nama.trim(), totalMain: 0,
+    kode: ku, nama: nama.trim(), telepon: tlpDisplay, totalMain: 0,
     tanggalMulai: null, sudahScanHariIni: false, status: "-",
     totalGratis: 0, tanggalDaftar: new Date().toISOString(), tanggalScanTerakhir: null,
   });
