@@ -417,46 +417,218 @@ app.post("/checkin", (req, res) => {
   }));
 });
 
-// ── ADMIN ─────────────────────────────────────────────────────
+// ── SESSION TOKEN — enkripsi PIN di URL ─────────────────────
+// PIN tidak pernah muncul di URL. Diganti token sementara.
+const crypto   = require("crypto");
+const sessions = new Map(); // token -> { pin, exp }
+
+function buatToken(pin) {
+  const token = crypto.randomBytes(24).toString("hex");
+  const exp   = Date.now() + 4 * 60 * 60 * 1000; // 4 jam
+  sessions.set(token, { pin, exp });
+  return token;
+}
+
+function cekToken(token) {
+  const s = sessions.get(token);
+  if (!s) return null;
+  if (Date.now() > s.exp) { sessions.delete(token); return null; }
+  return s.pin;
+}
+
+// Bersihkan session expired tiap 30 menit
+setInterval(() => {
+  for (const [k, v] of sessions) {
+    if (Date.now() > v.exp) sessions.delete(k);
+  }
+}, 30 * 60 * 1000);
+
+// ── ADMIN LOGIN ───────────────────────────────────────────────
 app.get("/admin", (req, res) => {
-  if ((req.query.pin||"")!==ADMIN_PIN) return res.send(html("Admin",`
-    <div class="ic" style="background:#f5f5f5;font-size:28px">🔐</div>
-    <h1 style="color:#111">Admin Panel</h1>
-    <p class="pesan" style="margin-bottom:20px">${NAMA_ARENA}</p>
-    <form action="/admin" method="get">
+  // Cek token session dulu
+  const tk  = req.query.tk || "";
+  const pin = tk ? cekToken(tk) : (req.query.pin || "");
+
+  if (!pin || pin !== ADMIN_PIN) {
+    const errMsg = req.query.err ? "PIN salah. Coba lagi." : "";
+    return res.send(`<!DOCTYPE html><html lang="id"><head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Admin — ${NAMA_ARENA}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#0a0f1a;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+      .card{background:#0f1829;border:1px solid #1e2d45;border-radius:20px;padding:32px 24px;max-width:340px;width:100%;text-align:center}
+      .logo{font-size:40px;margin-bottom:12px}
+      .arena{font-size:10px;font-weight:600;letter-spacing:.16em;text-transform:uppercase;color:#3b82f6;margin-bottom:8px}
+      h1{font-size:20px;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+      .sub{font-size:13px;color:#475569;margin-bottom:24px}
+      input{width:100%;padding:14px;background:#0d1b2e;border:1.5px solid #1e3a5f;border-radius:12px;font-size:28px;text-align:center;letter-spacing:.5em;color:#e2e8f0;outline:none;font-family:monospace;margin-bottom:12px}
+      input:focus{border-color:#3b82f6}
+      button{width:100%;background:#2563eb;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;letter-spacing:.04em}
+      button:active{opacity:.85}
+      .err{background:#1f0a0a;color:#f87171;border:1px solid #7f1d1d;border-radius:10px;padding:10px 12px;font-size:13px;margin-bottom:14px}
+    </style>
+    </head><body><div class="card">
+    <div class="logo">🎱</div>
+    <div class="arena">${NAMA_ARENA}</div>
+    <h1>Admin Panel</h1>
+    <p class="sub">Masukkan PIN untuk masuk</p>
+    ${errMsg ? `<div class="err">${errMsg}</div>` : ""}
+    <form action="/admin/login" method="post">
       <input type="password" name="pin" placeholder="••••" maxlength="8" autofocus autocomplete="off">
       <button type="submit">Masuk</button>
     </form>
-  `));
+    </div></body></html>`);
+  }
 
-  const db=bacaDB(), pin=req.query.pin;
-  const rows=db.members.map(m=>{
-    const bar=`<div style="background:#eee;border-radius:4px;height:6px;width:70px;display:inline-block;vertical-align:middle;margin-right:4px"><div style="background:#1D9E75;height:100%;border-radius:4px;width:${Math.round(m.totalMain/BATAS_MAIN*100)}%"></div></div><span style="font-size:11px;color:#888">${m.totalMain}/${BATAS_MAIN}</span>`;
+  // PIN valid — buat token baru jika belum ada
+  const token = tk || buatToken(pin);
+  const db = bacaDB();
+
+  const totalMember  = db.members.length;
+  const scanHariIni  = db.members.filter(m => m.sudahScanHariIni).length;
+  const rewardPending= db.members.filter(m => m.status === "GRATIS").length;
+  const aktifBulanIni= db.members.filter(m => m.totalMain > 0).length;
+
+  const rows = db.members.map((m, i) => {
+    const pct  = Math.round(m.totalMain / BATAS_MAIN * 100);
+    const isGratis = m.status === "GRATIS";
     return `<tr>
-      <td style="padding:10px 12px;font-family:monospace;font-size:12px;color:#1D9E75;font-weight:500">${m.kode}</td>
-      <td style="padding:10px 12px;font-size:13px">${m.nama}</td>
-      <td style="padding:10px 12px">${m.status==="GRATIS"?'<span style="background:#EAF3DE;color:#27500A;padding:2px 8px;border-radius:10px;font-size:11px;font-weight:600">GRATIS</span>':bar}</td>
-      <td style="padding:10px 12px;text-align:center;font-size:12px">${m.sudahScanHariIni?'<span style="color:#1D9E75;font-weight:500">✓</span>':'<span style="color:#ccc">—</span>'}</td>
-      <td style="padding:10px 12px;text-align:center;font-size:12px;color:#888">${m.totalGratis||0}x</td>
-      <td style="padding:10px 12px;text-align:center"><a href="/admin/hapus?pin=${pin}&kode=${m.kode}" onclick="return confirm('Hapus ${m.nama}?')" style="font-size:11px;color:#cc4444;text-decoration:none">Hapus</a></td>
+      <td>
+        <span style="font-family:monospace;font-size:12px;color:#4ade80;font-weight:600">${m.kode}</span>
+      </td>
+      <td>
+        <div style="font-size:13px;font-weight:500;color:#e2e8f0">${m.nama}</div>
+        <div style="font-size:10px;color:#475569;margin-top:1px">${m.tanggalDaftar ? new Date(m.tanggalDaftar).toLocaleDateString("id-ID") : "-"}</div>
+      </td>
+      <td>
+        ${isGratis
+          ? `<span style="background:#14532d;color:#4ade80;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700">🎁 GRATIS</span>`
+          : `<div>
+              <div style="background:#1a2e1e;border-radius:4px;height:5px;width:80px;overflow:hidden;margin-bottom:3px">
+                <div style="background:#16a34a;height:100%;width:${pct}%;border-radius:4px"></div>
+              </div>
+              <span style="font-size:11px;color:#4ade80">${m.totalMain}/${BATAS_MAIN}</span>
+            </div>`
+        }
+      </td>
+      <td style="text-align:center">
+        ${m.sudahScanHariIni
+          ? `<span style="background:#14532d;color:#4ade80;padding:2px 8px;border-radius:8px;font-size:11px">✓ Hadir</span>`
+          : `<span style="color:#334155;font-size:12px">—</span>`
+        }
+      </td>
+      <td style="text-align:center">
+        <span style="font-size:12px;color:#fbbf24;font-weight:600">${m.totalGratis || 0}×</span>
+      </td>
+      <td style="text-align:center">
+        <a href="/admin/hapus?tk=${token}&kode=${m.kode}"
+           onclick="return confirm('Hapus member ${m.nama}?')"
+           style="color:#ef4444;font-size:12px;text-decoration:none;padding:3px 8px;border:1px solid #3d1515;border-radius:6px">
+          Hapus
+        </a>
+      </td>
     </tr>`;
   }).join("");
 
-  res.send(`<!DOCTYPE html><html lang="id"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Admin</title>
-  <style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:sans-serif;background:#f5f5f5;padding:16px}.hdr{margin-bottom:12px}h1{font-size:17px;font-weight:600;color:#111}.sub{font-size:12px;color:#888;margin-top:2px}.stats{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:12px}.stat{background:#fff;border-radius:8px;padding:10px;text-align:center}.sn{font-size:20px;font-weight:600}.sl{font-size:11px;color:#888;margin-top:2px}.card{background:#fff;border-radius:12px;overflow:hidden;box-shadow:0 2px 8px rgba(0,0,0,.06);margin-bottom:12px;overflow-x:auto}table{width:100%;border-collapse:collapse;min-width:460px}th{background:#f8f8f8;padding:9px 12px;text-align:left;font-size:11px;font-weight:600;color:#888;text-transform:uppercase;border-bottom:1px solid #eee}tr{border-bottom:.5px solid #f0f0f0}tr:last-child{border-bottom:none}.btns{display:flex;gap:8px;flex-wrap:wrap}.btn{display:inline-block;padding:9px 16px;border-radius:8px;font-size:13px;font-weight:600;text-decoration:none}.bg{background:#1D9E75;color:#fff}.bw{background:#f0f0f0;color:#555}</style>
+  res.send(`<!DOCTYPE html><html lang="id"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Admin — ${NAMA_ARENA}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#080e18;min-height:100vh;color:#e2e8f0}
+    .topbar{background:#0d1829;border-bottom:1px solid #1e2d45;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+    .topbar-left{display:flex;align-items:center;gap:10px}
+    .topbar-logo{font-size:22px}
+    .topbar-title{font-size:15px;font-weight:700;color:#e2e8f0}
+    .topbar-sub{font-size:11px;color:#475569;margin-top:1px}
+    .topbar-right{font-size:11px;color:#334155}
+    .wrap{padding:16px 16px 32px}
+    .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px}
+    .stat{background:#0d1829;border:1px solid #1e2d45;border-radius:14px;padding:14px 16px}
+    .stat-num{font-size:26px;font-weight:700;color:#e2e8f0;line-height:1}
+    .stat-label{font-size:11px;color:#475569;margin-top:4px}
+    .stat-icon{font-size:20px;margin-bottom:6px}
+    .section-title{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#475569;margin-bottom:8px}
+    .table-wrap{background:#0d1829;border:1px solid #1e2d45;border-radius:14px;overflow:hidden;margin-bottom:16px;overflow-x:auto}
+    table{width:100%;border-collapse:collapse;min-width:480px}
+    thead tr{background:#0a1422;border-bottom:1px solid #1e2d45}
+    th{padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.08em}
+    tbody tr{border-bottom:.5px solid #111d2e;transition:background .1s}
+    tbody tr:last-child{border-bottom:none}
+    tbody tr:hover{background:#0f1f35}
+    td{padding:11px 14px;vertical-align:middle}
+    .action-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    .btn-primary{display:inline-flex;align-items:center;gap:6px;background:#2563eb;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;text-decoration:none;cursor:pointer}
+    .btn-primary:active{opacity:.85}
+    .btn-secondary{display:inline-flex;align-items:center;gap:6px;background:#1e2d45;color:#94a3b8;border:1px solid #243447;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer}
+    .btn-secondary:active{opacity:.85}
+    .empty{text-align:center;padding:32px;color:#334155;font-size:13px}
+  </style>
   </head><body>
-  <div class="hdr"><h1>${NAMA_ARENA}</h1><div class="sub">${new Date().toLocaleString("id-ID",{timeZone:"Asia/Jakarta"})}</div></div>
-  <div class="stats">
-    <div class="stat"><div class="sn">${db.members.length}</div><div class="sl">Member</div></div>
-    <div class="stat"><div class="sn">${db.members.filter(m=>m.sudahScanHariIni).length}</div><div class="sl">Scan hari ini</div></div>
-    <div class="stat"><div class="sn">${db.members.filter(m=>m.status==="GRATIS").length}</div><div class="sl">Reward pending</div></div>
+
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="topbar-logo">🎱</div>
+      <div>
+        <div class="topbar-title">${NAMA_ARENA}</div>
+        <div class="topbar-sub">Admin Dashboard</div>
+      </div>
+    </div>
+    <div class="topbar-right">${new Date().toLocaleString("id-ID",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"})}</div>
   </div>
-  <div class="card"><table><thead><tr><th>Kode</th><th>Nama</th><th>Progress</th><th>Scan</th><th>Gratis</th><th></th></tr></thead>
-  <tbody>${rows||'<tr><td colspan="6" style="text-align:center;padding:20px;color:#aaa;font-size:13px">Belum ada member</td></tr>'}</tbody></table></div>
-  <div class="btns">
-    <a href="/admin/tambah?pin=${pin}" class="btn bg">+ Tambah Member</a>
-    <a href="/admin/reset?pin=${pin}" class="btn bw" onclick="return confirm('Reset scan harian?')">Reset Scan Harian</a>
+
+  <div class="wrap">
+
+    <div class="stats">
+      <div class="stat">
+        <div class="stat-icon">👥</div>
+        <div class="stat-num">${totalMember}</div>
+        <div class="stat-label">Total member</div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon">📲</div>
+        <div class="stat-num">${scanHariIni}</div>
+        <div class="stat-label">Scan hari ini</div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon">🎁</div>
+        <div class="stat-num">${rewardPending}</div>
+        <div class="stat-label">Reward pending</div>
+      </div>
+      <div class="stat">
+        <div class="stat-icon">🔥</div>
+        <div class="stat-num">${aktifBulanIni}</div>
+        <div class="stat-label">Aktif bulan ini</div>
+      </div>
+    </div>
+
+    <div class="action-bar">
+      <a href="/admin/tambah?tk=${token}" class="btn-primary">＋ Tambah Member</a>
+      <a href="/admin/reset?tk=${token}" class="btn-secondary"
+         onclick="return confirm('Reset scan harian semua member?')">↺ Reset Scan Harian</a>
+    </div>
+
+    <div class="section-title">Daftar Member</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Kode</th><th>Nama</th><th>Progress</th>
+          <th>Hari ini</th><th>Reward</th><th></th>
+        </tr></thead>
+        <tbody>${rows || `<tr><td colspan="6" class="empty">Belum ada member terdaftar</td></tr>`}</tbody>
+      </table>
+    </div>
+
   </div></body></html>`);
+});
+
+// ── ADMIN LOGIN POST ──────────────────────────────────────────
+app.post("/admin/login", (req, res) => {
+  const pin = (req.body.pin || "").trim();
+  if (pin !== ADMIN_PIN) return res.redirect("/admin?err=1");
+  const token = buatToken(pin);
+  res.redirect(`/admin?tk=${token}`);
 });
 
 // ── HELPER: generate kode premium JMB-MMYY-XX ───────────────
@@ -489,29 +661,42 @@ function generateKode(members) {
 }
 
 app.get("/admin/tambah", (req, res) => {
-  const pin = req.query.pin || "";
-  if (pin !== ADMIN_PIN) return res.redirect("/admin");
+  const tk  = req.query.tk || "";
+  const pin = cekToken(tk);
+  if (!pin || pin !== ADMIN_PIN) return res.redirect("/admin");
   const { nama } = req.query;
 
-  // Tampilkan form — hanya input NAMA saja
-  if (!nama) return res.send(html("Tambah Member", `
-    <div class="ic" style="background:#E1F5EE;color:#1D9E75;font-size:24px">+</div>
-    <h1 style="color:#111;margin-bottom:6px">Tambah Member Baru</h1>
-    <p class="pesan" style="margin-bottom:18px">Kode member dibuat otomatis.</p>
-    <form action="/admin/tambah" method="get" style="text-align:left">
-      <input type="hidden" name="pin" value="${pin}">
-      <label>Nama Member</label>
-      <input class="field" type="text" name="nama" placeholder="contoh: Budi Santoso" required autofocus>
-      <button type="submit" style="width:100%;background:#1D9E75;color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:600;cursor:pointer">Daftarkan Member</button>
+  if (!nama) return res.send(`<!DOCTYPE html><html lang="id"><head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Tambah Member — ${NAMA_ARENA}</title>
+    <style>
+      *{box-sizing:border-box;margin:0;padding:0}
+      body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#080e18;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+      .card{background:#0d1829;border:1px solid #1e2d45;border-radius:20px;padding:28px 22px;max-width:380px;width:100%}
+      .back{display:flex;align-items:center;gap:6px;font-size:13px;color:#3b82f6;text-decoration:none;margin-bottom:20px}
+      h1{font-size:20px;font-weight:700;color:#e2e8f0;margin-bottom:4px}
+      .sub{font-size:13px;color:#475569;margin-bottom:24px}
+      label{display:block;font-size:12px;color:#64748b;margin-bottom:6px;font-weight:500}
+      input[type=text]{width:100%;padding:13px 14px;background:#0a1422;border:1.5px solid #1e3a5f;border-radius:12px;font-size:15px;color:#e2e8f0;outline:none;margin-bottom:20px}
+      input[type=text]:focus{border-color:#3b82f6}
+      input::placeholder{color:#334155}
+      button{width:100%;background:#2563eb;color:#fff;border:none;border-radius:12px;padding:14px;font-size:15px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:8px}
+      button:active{opacity:.85}
+    </style>
+    </head><body><div class="card">
+    <a href="/admin?tk=${tk}" class="back">← Kembali ke dashboard</a>
+    <h1>Tambah Member Baru</h1>
+    <p class="sub">Kode member dibuat otomatis — cukup masukkan nama.</p>
+    <form action="/admin/tambah" method="get">
+      <input type="hidden" name="tk" value="${tk}">
+      <label>Nama Lengkap Member</label>
+      <input type="text" name="nama" placeholder="contoh: Budi Santoso" required autofocus autocomplete="off">
+      <button type="submit">＋ Daftarkan Member</button>
     </form>
-    <a href="/admin?pin=${pin}" style="display:block;text-align:center;margin-top:14px;font-size:13px;color:#888;text-decoration:none">← Dashboard</a>
-  `));
+    </div></body></html>`);
 
-  // Generate kode otomatis
   const db  = bacaDB();
   const ku  = generateKode(db.members);
-
-  // Simpan member baru
   db.members.push({
     kode: ku, nama: nama.trim(), totalMain: 0,
     tanggalMulai: null, sudahScanHariIni: false, status: "-",
@@ -521,43 +706,64 @@ app.get("/admin/tambah", (req, res) => {
 
   const scanUrl = `${req.protocol}://${req.get("host")}/scan?id=${ku}`;
 
-  // Halaman sukses — tampilkan kode & URL QR
-  res.send(html("Terdaftar", `
-    <div class="ic" style="background:#E1F5EE;color:#1D9E75">✓</div>
-    <h1 style="color:#085041">Member Terdaftar!</h1>
-    <div class="nama">${nama.trim()}</div>
-
-    <div style="background:#f0faf5;border:1.5px solid #1D9E75;border-radius:10px;padding:12px 16px;margin-bottom:14px">
-      <div style="font-size:11px;color:#888;margin-bottom:4px">Kode member (auto):</div>
-      <div style="font-family:monospace;font-size:22px;font-weight:700;color:#1D9E75">${ku}</div>
-    </div>
-
-    <div style="font-size:11px;color:#aaa;margin-bottom:6px">URL untuk generate QR — tap untuk copy:</div>
-    <div id="qurl"
-      onclick="navigator.clipboard&&navigator.clipboard.writeText(this.textContent).then(()=>{this.style.background='#E1F5EE';this.style.color='#085041';setTimeout(()=>{this.style.background='#f5f5f5';this.style.color='#1a73e8'},1500)})"
-      style="background:#f5f5f5;border-radius:8px;padding:9px 10px;font-family:monospace;font-size:10px;color:#1a73e8;word-break:break-all;text-align:left;cursor:pointer;margin-bottom:4px;border:1px solid #e0e0e0"
-    >${scanUrl}</div>
-    <div style="font-size:10px;color:#ccc;margin-bottom:16px">Tap URL di atas → copy → paste ke qr-code-generator.com</div>
-
-    <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
-      <a href="/admin/tambah?pin=${pin}" class="btn" style="background:#f0f0f0;color:#333">+ Tambah lagi</a>
-      <a href="/admin?pin=${pin}" class="btn" style="background:#1D9E75;color:#fff">Dashboard</a>
-    </div>
-  `));
+  res.send(`<!DOCTYPE html><html lang="id"><head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Member Terdaftar — ${NAMA_ARENA}</title>
+  <style>
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#080e18;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+    .card{background:#0d1829;border:1px solid #1e2d45;border-radius:20px;padding:28px 22px;max-width:380px;width:100%;text-align:center}
+    .check{width:56px;height:56px;border-radius:50%;background:#14532d;border:2px solid #16a34a;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 14px}
+    h1{font-size:20px;font-weight:700;color:#4ade80;margin-bottom:4px}
+    .member-name{font-size:22px;font-weight:700;color:#e2e8f0;margin-bottom:16px}
+    .kode-box{background:#0a1a0f;border:1.5px solid #16a34a;border-radius:12px;padding:12px 16px;margin-bottom:16px}
+    .kode-label{font-size:10px;color:#4ade80;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
+    .kode-val{font-family:monospace;font-size:24px;font-weight:700;color:#4ade80;letter-spacing:.08em}
+    .url-label{font-size:11px;color:#475569;margin-bottom:6px}
+    .url-box{background:#0a1422;border:1px solid #1e3a5f;border-radius:10px;padding:10px 12px;font-family:monospace;font-size:11px;color:#3b82f6;word-break:break-all;text-align:left;cursor:pointer;margin-bottom:6px}
+    .url-hint{font-size:10px;color:#334155;margin-bottom:20px}
+    .btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+    .btn-g{display:inline-block;background:#2563eb;color:#fff;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:700;text-decoration:none}
+    .btn-w{display:inline-block;background:#1e2d45;color:#94a3b8;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:600;text-decoration:none}
+  </style>
+  </head><body><div class="card">
+  <div class="check">✓</div>
+  <h1>Member Terdaftar!</h1>
+  <div class="member-name">${nama.trim()}</div>
+  <div class="kode-box">
+    <div class="kode-label">Kode Member</div>
+    <div class="kode-val">${ku}</div>
+  </div>
+  <div class="url-label">URL untuk generate QR — tap untuk copy:</div>
+  <div class="url-box" id="qurl"
+    onclick="navigator.clipboard&&navigator.clipboard.writeText(this.textContent).then(()=>{this.style.background='#0a1a0f';this.style.color='#4ade80';this.style.borderColor='#16a34a';setTimeout(()=>{this.style.background='';this.style.color='';this.style.borderColor=''},2000)})"
+  >${scanUrl}</div>
+  <div class="url-hint">Tap URL → copy → paste ke qr-code-generator.com</div>
+  <div class="btns">
+    <a href="/admin/tambah?tk=${tk}" class="btn-w">＋ Tambah lagi</a>
+    <a href="/admin?tk=${tk}" class="btn-g">Dashboard</a>
+  </div>
+  </div></body></html>`);
 });
 
 app.get("/admin/hapus", (req, res) => {
-  if ((req.query.pin||"")!==ADMIN_PIN) return res.redirect("/admin");
-  const db=bacaDB();
-  db.members=db.members.filter(m=>m.kode!==(req.query.kode||"").toUpperCase());
-  simpanDB(db); res.redirect(`/admin?pin=${req.query.pin}`);
+  const tk  = req.query.tk || "";
+  const pin = cekToken(tk);
+  if (!pin || pin !== ADMIN_PIN) return res.redirect("/admin");
+  const db = bacaDB();
+  db.members = db.members.filter(m => m.kode !== (req.query.kode||"").toUpperCase());
+  simpanDB(db);
+  res.redirect(`/admin?tk=${tk}`);
 });
 
 app.get("/admin/reset", (req, res) => {
-  if ((req.query.pin||"")!==ADMIN_PIN) return res.redirect("/admin");
-  const db=bacaDB();
-  db.members.forEach(m=>{m.sudahScanHariIni=false;});
-  simpanDB(db); res.redirect(`/admin?pin=${req.query.pin}`);
+  const tk  = req.query.tk || "";
+  const pin = cekToken(tk);
+  if (!pin || pin !== ADMIN_PIN) return res.redirect("/admin");
+  const db = bacaDB();
+  db.members.forEach(m => { m.sudahScanHariIni = false; });
+  simpanDB(db);
+  res.redirect(`/admin?tk=${tk}`);
 });
 
 cron.schedule("0 19 * * *", () => {
