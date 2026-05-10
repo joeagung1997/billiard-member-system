@@ -1,0 +1,16 @@
+{
+  "name": "billiard-member-system",
+  "version": "1.0.0",
+  "description": "Sistem member billiard tanpa login Google",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "node-cron": "^3.0.3"
+  },
+  "engines": {
+    "node": "18.x"
+  }
+}

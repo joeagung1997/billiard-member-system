@@ -1,0 +1,15 @@
+{
+  "members": [
+    {
+      "kode": "BLD-0001",
+      "nama": "Contoh Member",
+      "totalMain": 0,
+      "tanggalMulai": null,
+      "sudahScanHariIni": false,
+      "status": "-",
+      "totalGratis": 0,
+      "tanggalDaftar": "2026-01-01",
+      "tanggalScanTerakhir": null
+    }
+  ]
+}
