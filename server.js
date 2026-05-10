@@ -16,6 +16,7 @@ const express = require("express");
 const fs      = require("fs");
 const path    = require("path");
 const cron    = require("node-cron");
+const QRCode  = require("qrcode");
 
 const app  = express();
 const PORT = process.env.PORT || 3000;
@@ -618,8 +619,8 @@ app.get("/admin", (req, res) => {
       <td style="text-align:center">
         <a href="/admin/qr/${m.kode}?tk=${token}" target="_blank"
           style="display:inline-block">
-          <img src="${qrImgUrl(scanUrl, 80)}" width="56" height="56"
-               alt="QR ${m.kode}"
+          <img src="/admin/qr-img/${m.kode}?tk=${token}" width="56" height="56"
+               alt="QR ${m.kode}" loading="lazy"
                style="border-radius:6px;background:#fff;padding:3px;display:block">
         </a>
       </td>
@@ -1199,11 +1200,26 @@ app.get("/admin/klaim", (req, res) => {
   res.redirect("/admin?tk=" + tk);
 });
 
-// ── HELPER: URL gambar QR (Google Charts API, gratis, no library) ──
-function qrImgUrl(text, size) {
-  const sz = size || 200;
-  return "https://chart.googleapis.com/chart?cht=qr&chs=" + sz + "x" + sz
-    + "&chld=M|2&chl=" + encodeURIComponent(text);
+// ── HELPER: generate QR sebagai data URL (PNG base64) ───────
+async function qrDataUrl(text) {
+  return await QRCode.toDataURL(text, {
+    errorCorrectionLevel: "M",
+    type: "image/png",
+    width: 400,
+    margin: 2,
+    color: { dark: "#000000", light: "#ffffff" }
+  });
+}
+
+// ── HELPER: generate QR sebagai Buffer PNG ───────────────────
+async function qrBuffer(text) {
+  return await QRCode.toBuffer(text, {
+    errorCorrectionLevel: "M",
+    type: "png",
+    width: 400,
+    margin: 2,
+    color: { dark: "#000000", light: "#ffffff" }
+  });
 }
 
 // ── HELPER: generate kode premium JMB-MMYY-XX ───────────────
@@ -1235,7 +1251,7 @@ function generateKode(members) {
   return kode;
 }
 
-app.get("/admin/tambah", (req, res) => {
+app.get("/admin/tambah", async (req, res) => {
   const tk  = req.query.tk || "";
   const pin = cekToken(tk);
   if (!pin || pin !== ADMIN_PIN) return res.redirect("/admin");
@@ -1330,9 +1346,10 @@ app.get("/admin/tambah", (req, res) => {
   });
   simpanDB(db);
 
-  const scanUrl  = req.protocol + "://" + req.get("host") + "/scan?id=" + ku;
-  const qrUrl    = qrImgUrl(scanUrl, 240);
-  const dlUrl    = "/admin/qr/" + ku + "?tk=" + tk;
+  const scanUrl = req.protocol + "://" + req.get("host") + "/scan?id=" + ku;
+  let qrDataUri = "";
+  try { qrDataUri = await qrDataUrl(scanUrl); } catch(e) { qrDataUri = ""; }
+  const dlUrl = "/admin/qr/" + ku + "?tk=" + tk;
 
   res.send(`<!DOCTYPE html><html lang="id"><head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1366,7 +1383,7 @@ app.get("/admin/tambah", (req, res) => {
   </div>
 
   <div class="qr-wrap">
-    <img src="${qrUrl}" width="200" height="200" alt="QR Code ${ku}" id="qrimg">
+    <img src="${qrDataUri}" width="200" height="200" alt="QR Code ${ku}" id="qrimg">
   </div>
   <div class="qr-hint">QR siap dipakai — scan untuk cek, atau download untuk cetak kartu</div>
 
@@ -1378,11 +1395,32 @@ app.get("/admin/tambah", (req, res) => {
   </div></body></html>`);
 });
 
-// ── DOWNLOAD QR ─────────────────────────────────────────────
-// Proxy Google Charts → kirim sebagai file download PNG
+// ── QR IMAGE inline (untuk thumbnail tabel) ─────────────────
+app.get("/admin/qr-img/:kode", async (req, res) => {
+  const tk  = req.query.tk || "";
+  const pin = cekToken(tk);
+  if (!pin || pin !== ADMIN_PIN) return res.status(403).end();
+
+  const kode = req.params.kode.toUpperCase();
+  const db   = bacaDB();
+  const m    = db.members.find(m => m.kode === kode);
+  if (!m) return res.status(404).end();
+
+  const scanUrl = req.protocol + "://" + req.get("host") + "/scan?id=" + kode;
+  try {
+    const buf = await qrBuffer(scanUrl);
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Cache-Control", "public, max-age=3600");
+    res.send(buf);
+  } catch (e) {
+    res.status(500).end();
+  }
+});
+
+// ── QR DOWNLOAD (download PNG ke device) ─────────────────────
 app.get("/admin/qr/:kode", async (req, res) => {
-  const tk   = req.query.tk || "";
-  const pin  = cekToken(tk);
+  const tk  = req.query.tk || "";
+  const pin = cekToken(tk);
   if (!pin || pin !== ADMIN_PIN) return res.redirect("/admin");
 
   const kode = req.params.kode.toUpperCase();
@@ -1391,27 +1429,17 @@ app.get("/admin/qr/:kode", async (req, res) => {
   if (!m) return res.status(404).send("Member tidak ditemukan");
 
   const scanUrl = req.protocol + "://" + req.get("host") + "/scan?id=" + kode;
-  const gcUrl   = qrImgUrl(scanUrl, 400);
-
   try {
-    const https  = require("https");
-    const http   = require("http");
-    const client = gcUrl.startsWith("https") ? https : http;
-
-    const proxyReq = client.get(gcUrl, (proxyRes) => {
-      res.setHeader("Content-Type", "image/png");
-      res.setHeader("Content-Disposition",
-        "attachment; filename=\"QR-" + kode + ".png\"");
-      proxyRes.pipe(res);
-    });
-    proxyReq.on("error", () => {
-      // Fallback: redirect ke URL gambar langsung
-      res.redirect(gcUrl);
-    });
+    const buf = await qrBuffer(scanUrl);
+    res.setHeader("Content-Type", "image/png");
+    res.setHeader("Content-Disposition",
+      "attachment; filename=\"QR-" + kode + ".png\"");
+    res.send(buf);
   } catch (e) {
-    res.redirect(gcUrl);
+    res.status(500).send("Gagal generate QR: " + e.message);
   }
 });
+
 
 app.get("/admin/hapus", (req, res) => {
   const tk  = req.query.tk || "";
