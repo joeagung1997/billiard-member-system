@@ -615,9 +615,18 @@ app.get("/admin", (req, res) => {
       <td>
         <span style="font-size:13px;font-weight:700;color:var(--gold)">${m.totalGratis || 0}×</span>
       </td>
+      <td style="text-align:center">
+        <a href="/admin/qr/${m.kode}?tk=${token}" target="_blank"
+          style="display:inline-block">
+          <img src="${qrImgUrl(scanUrl, 80)}" width="56" height="56"
+               alt="QR ${m.kode}"
+               style="border-radius:6px;background:#fff;padding:3px;display:block">
+        </a>
+      </td>
       <td>
         <div style="display:flex;gap:4px;align-items:center;justify-content:flex-end;flex-wrap:wrap">
-          <button onclick="copyUrl('${scanUrl}',this)" class="tbl-btn tbl-btn-blue">Copy QR</button>
+          <a href="/admin/qr/${m.kode}?tk=${token}" class="tbl-btn tbl-btn-blue" download="QR-${m.kode}.png">⬇ QR</a>
+          <button onclick="copyUrl('${scanUrl}',this)" class="tbl-btn tbl-btn-blue">Copy</button>
           ${isGratis ? `<a href="/admin/klaim?tk=${token}&kode=${m.kode}"
             onclick="return confirm('Tandai reward ${m.nama} sudah diklaim?')"
             class="tbl-btn tbl-btn-gold">Klaim</a>` : ""}
@@ -1018,6 +1027,7 @@ app.get("/admin", (req, res) => {
             <th>Progress</th>
             <th>Status</th>
             <th>Reward</th>
+            <th style="text-align:center">QR</th>
             <th style="text-align:right">Aksi</th>
           </tr></thead>
           <tbody id="tbody">
@@ -1189,6 +1199,13 @@ app.get("/admin/klaim", (req, res) => {
   res.redirect("/admin?tk=" + tk);
 });
 
+// ── HELPER: URL gambar QR (Google Charts API, gratis, no library) ──
+function qrImgUrl(text, size) {
+  const sz = size || 200;
+  return "https://chart.googleapis.com/chart?cht=qr&chs=" + sz + "x" + sz
+    + "&chld=M|2&chl=" + encodeURIComponent(text);
+}
+
 // ── HELPER: generate kode premium JMB-MMYY-XX ───────────────
 // Format: JMB-0526-K3 (singkatan + bulan-tahun + 2 karakter acak)
 // Ganti prefix lewat Railway Variable: KODE_PREFIX (default: JMB)
@@ -1313,7 +1330,9 @@ app.get("/admin/tambah", (req, res) => {
   });
   simpanDB(db);
 
-  const scanUrl = `${req.protocol}://${req.get("host")}/scan?id=${ku}`;
+  const scanUrl  = req.protocol + "://" + req.get("host") + "/scan?id=" + ku;
+  const qrUrl    = qrImgUrl(scanUrl, 240);
+  const dlUrl    = "/admin/qr/" + ku + "?tk=" + tk;
 
   res.send(`<!DOCTYPE html><html lang="id"><head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1321,38 +1340,77 @@ app.get("/admin/tambah", (req, res) => {
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#080e18;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
-    .card{background:#0d1829;border:1px solid #1e2d45;border-radius:20px;padding:28px 22px;max-width:380px;width:100%;text-align:center}
-    .check{width:56px;height:56px;border-radius:50%;background:#14532d;border:2px solid #16a34a;display:flex;align-items:center;justify-content:center;font-size:24px;margin:0 auto 14px}
-    h1{font-size:20px;font-weight:700;color:#4ade80;margin-bottom:4px}
-    .member-name{font-size:22px;font-weight:700;color:#e2e8f0;margin-bottom:16px}
-    .kode-box{background:#0a1a0f;border:1.5px solid #16a34a;border-radius:12px;padding:12px 16px;margin-bottom:16px}
-    .kode-label{font-size:10px;color:#4ade80;font-weight:600;letter-spacing:.1em;text-transform:uppercase;margin-bottom:4px}
-    .kode-val{font-family:monospace;font-size:24px;font-weight:700;color:#4ade80;letter-spacing:.08em}
-    .url-label{font-size:11px;color:#475569;margin-bottom:6px}
-    .url-box{background:#0a1422;border:1px solid #1e3a5f;border-radius:10px;padding:10px 12px;font-family:monospace;font-size:11px;color:#3b82f6;word-break:break-all;text-align:left;cursor:pointer;margin-bottom:6px}
-    .url-hint{font-size:10px;color:#334155;margin-bottom:20px}
-    .btns{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
-    .btn-g{display:inline-block;background:#2563eb;color:#fff;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:700;text-decoration:none}
-    .btn-w{display:inline-block;background:#1e2d45;color:#94a3b8;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:600;text-decoration:none}
+    .card{background:#0d1829;border:1px solid #1e2d45;border-radius:20px;padding:28px 22px;max-width:400px;width:100%;text-align:center}
+    .ic{width:52px;height:52px;border-radius:50%;background:#14532d;border:2px solid #22c55e;display:flex;align-items:center;justify-content:center;font-size:22px;margin:0 auto 12px}
+    h1{font-size:19px;font-weight:700;color:#22c55e;margin-bottom:3px}
+    .nm{font-size:21px;font-weight:700;color:#e8edf5;margin-bottom:4px}
+    .tp{font-size:13px;color:#4a5e78;margin-bottom:16px;font-family:monospace}
+    .kode-row{display:flex;align-items:center;justify-content:center;gap:10px;background:#0a1a0f;border:1.5px solid #22c55e;border-radius:12px;padding:10px 16px;margin-bottom:16px}
+    .kode-val{font-family:monospace;font-size:20px;font-weight:700;color:#22c55e;letter-spacing:.08em}
+    .qr-wrap{background:#fff;border-radius:14px;padding:12px;display:inline-block;margin-bottom:12px}
+    .qr-wrap img{display:block;border-radius:6px}
+    .qr-hint{font-size:11px;color:#334155;margin-bottom:16px}
+    .btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+    .btn-dl{display:inline-flex;align-items:center;gap:6px;background:#22c55e;color:#fff;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;text-decoration:none}
+    .btn-g{display:inline-flex;align-items:center;gap:6px;background:#2563eb;color:#fff;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;text-decoration:none}
+    .btn-w{display:inline-flex;align-items:center;gap:6px;background:#1e2d45;color:#94a3b8;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:600;text-decoration:none}
   </style>
   </head><body><div class="card">
-  <div class="check">✓</div>
+  <div class="ic">✓</div>
   <h1>Member Terdaftar!</h1>
-  <div class="member-name">${nama.trim()}</div>
-  <div class="kode-box">
-    <div class="kode-label">Kode Member</div>
-    <div class="kode-val">${ku}</div>
+  <div class="nm">${nama.trim()}</div>
+  <div class="tp">${tlpDisplay}</div>
+
+  <div class="kode-row">
+    <span class="kode-val">${ku}</span>
   </div>
-  <div class="url-label">URL untuk generate QR — tap untuk copy:</div>
-  <div class="url-box" id="qurl"
-    onclick="navigator.clipboard&&navigator.clipboard.writeText(this.textContent).then(()=>{this.style.background='#0a1a0f';this.style.color='#4ade80';this.style.borderColor='#16a34a';setTimeout(()=>{this.style.background='';this.style.color='';this.style.borderColor=''},2000)})"
-  >${scanUrl}</div>
-  <div class="url-hint">Tap URL → copy → paste ke qr-code-generator.com</div>
+
+  <div class="qr-wrap">
+    <img src="${qrUrl}" width="200" height="200" alt="QR Code ${ku}" id="qrimg">
+  </div>
+  <div class="qr-hint">QR siap dipakai — scan untuk cek, atau download untuk cetak kartu</div>
+
   <div class="btns">
+    <a href="${dlUrl}" class="btn-dl" download="QR-${ku}.png">⬇ Download QR</a>
     <a href="/admin/tambah?tk=${tk}" class="btn-w">＋ Tambah lagi</a>
     <a href="/admin?tk=${tk}" class="btn-g">Dashboard</a>
   </div>
   </div></body></html>`);
+});
+
+// ── DOWNLOAD QR ─────────────────────────────────────────────
+// Proxy Google Charts → kirim sebagai file download PNG
+app.get("/admin/qr/:kode", async (req, res) => {
+  const tk   = req.query.tk || "";
+  const pin  = cekToken(tk);
+  if (!pin || pin !== ADMIN_PIN) return res.redirect("/admin");
+
+  const kode = req.params.kode.toUpperCase();
+  const db   = bacaDB();
+  const m    = db.members.find(m => m.kode === kode);
+  if (!m) return res.status(404).send("Member tidak ditemukan");
+
+  const scanUrl = req.protocol + "://" + req.get("host") + "/scan?id=" + kode;
+  const gcUrl   = qrImgUrl(scanUrl, 400);
+
+  try {
+    const https  = require("https");
+    const http   = require("http");
+    const client = gcUrl.startsWith("https") ? https : http;
+
+    const proxyReq = client.get(gcUrl, (proxyRes) => {
+      res.setHeader("Content-Type", "image/png");
+      res.setHeader("Content-Disposition",
+        "attachment; filename=\"QR-" + kode + ".png\"");
+      proxyRes.pipe(res);
+    });
+    proxyReq.on("error", () => {
+      // Fallback: redirect ke URL gambar langsung
+      res.redirect(gcUrl);
+    });
+  } catch (e) {
+    res.redirect(gcUrl);
+  }
 });
 
 app.get("/admin/hapus", (req, res) => {
