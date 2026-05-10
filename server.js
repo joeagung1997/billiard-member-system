@@ -20,7 +20,7 @@ const cron    = require("node-cron");
 const app  = express();
 const PORT = process.env.PORT || 3000;
 
-const NAMA_ARENA = process.env.NAMA_ARENA || "Arena Billiard";
+const NAMA_ARENA = process.env.NAMA_ARENA || "Warpat Jombang";
 const BATAS_MAIN = parseInt(process.env.BATAS_MAIN) || 10;
 const BATAS_HARI = parseInt(process.env.BATAS_HARI) || 30;
 const ADMIN_PIN  = process.env.ADMIN_PIN  || "1234";
@@ -485,25 +485,48 @@ app.get("/admin", (req, res) => {
   const token = tk || buatToken(pin);
   const db = bacaDB();
 
-  const totalMember  = db.members.length;
-  const scanHariIni  = db.members.filter(m => m.sudahScanHariIni).length;
-  const rewardPending= db.members.filter(m => m.status === "GRATIS").length;
-  const aktifBulanIni= db.members.filter(m => m.totalMain > 0).length;
+  const totalMember   = db.members.length;
+  const scanHariIni   = db.members.filter(m => m.sudahScanHariIni).length;
+  const rewardPending = db.members.filter(m => m.status === "GRATIS").length;
+  const aktifBulanIni = db.members.filter(m => m.totalMain > 0).length;
 
-  const rows = db.members.map((m, i) => {
-    const pct  = Math.round(m.totalMain / BATAS_MAIN * 100);
+  // Riwayat scan hari ini (urut jam terbaru)
+  const scanList = db.members
+    .filter(m => m.sudahScanHariIni && m.tanggalScanTerakhir)
+    .sort((a,b) => new Date(b.tanggalScanTerakhir) - new Date(a.tanggalScanTerakhir))
+    .map(m => {
+      const jam = new Date(m.tanggalScanTerakhir).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"});
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:.5px solid #111d2e">
+        <div>
+          <span style="font-size:13px;font-weight:500;color:#e2e8f0">${m.nama}</span>
+          <span style="font-size:10px;font-family:monospace;color:#334155;margin-left:8px">${m.kode}</span>
+        </div>
+        <span style="font-size:12px;color:#4ade80;font-weight:600">${jam}</span>
+      </div>`;
+    }).join("") || `<div style="text-align:center;padding:16px;color:#334155;font-size:13px">Belum ada yang check-in hari ini</div>`;
+
+  const hostBase = req.protocol + "://" + req.get("host");
+
+  const rows = db.members.map(m => {
+    const pct      = Math.round(m.totalMain / BATAS_MAIN * 100);
     const isGratis = m.status === "GRATIS";
+    const scanUrl  = hostBase + "/scan?id=" + m.kode;
+    const tglDaftar= m.tanggalDaftar ? new Date(m.tanggalDaftar).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}) : "-";
+    const tglTerakhir = m.tanggalScanTerakhir ? new Date(m.tanggalScanTerakhir).toLocaleDateString("id-ID",{day:"numeric",month:"short"}) : "—";
     return `<tr>
       <td>
         <span style="font-family:monospace;font-size:12px;color:#4ade80;font-weight:600">${m.kode}</span>
+        <br><span style="font-size:10px;color:#334155">${tglDaftar}</span>
       </td>
       <td>
         <div style="font-size:13px;font-weight:500;color:#e2e8f0">${m.nama}</div>
-        <div style="font-size:10px;color:#475569;margin-top:1px">${m.tanggalDaftar ? new Date(m.tanggalDaftar).toLocaleDateString("id-ID") : "-"}</div>
+        <div style="font-size:10px;color:#475569;margin-top:1px">Terakhir: ${tglTerakhir}</div>
       </td>
       <td>
         ${isGratis
-          ? `<span style="background:#14532d;color:#4ade80;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700">🎁 GRATIS</span>`
+          ? `<span style="background:#14532d;color:#4ade80;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700">🎁 GRATIS</span>
+             <br><a href="/admin/klaim?tk=${token}&kode=${m.kode}" onclick="return confirm('Tandai reward ${m.nama} sudah diklaim?')"
+               style="font-size:10px;color:#fbbf24;text-decoration:none;margin-top:3px;display:inline-block">Tandai klaim ↗</a>`
           : `<div>
               <div style="background:#1a2e1e;border-radius:4px;height:5px;width:80px;overflow:hidden;margin-bottom:3px">
                 <div style="background:#16a34a;height:100%;width:${pct}%;border-radius:4px"></div>
@@ -521,12 +544,22 @@ app.get("/admin", (req, res) => {
       <td style="text-align:center">
         <span style="font-size:12px;color:#fbbf24;font-weight:600">${m.totalGratis || 0}×</span>
       </td>
-      <td style="text-align:center">
-        <a href="/admin/hapus?tk=${token}&kode=${m.kode}"
-           onclick="return confirm('Hapus member ${m.nama}?')"
-           style="color:#ef4444;font-size:12px;text-decoration:none;padding:3px 8px;border:1px solid #3d1515;border-radius:6px">
-          Hapus
-        </a>
+      <td>
+        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
+          <button onclick="copyUrl('${scanUrl}',this)"
+            style="background:#1e2d45;color:#60a5fa;border:1px solid #243447;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;white-space:nowrap">
+            Copy QR
+          </button>
+          <a href="/admin/edit?tk=${token}&kode=${m.kode}"
+            style="color:#94a3b8;font-size:11px;text-decoration:none;padding:3px 8px;border:1px solid #1e2d45;border-radius:6px;white-space:nowrap">
+            Edit
+          </a>
+          <a href="/admin/hapus?tk=${token}&kode=${m.kode}"
+            onclick="return confirm('Hapus member ${m.nama}?')"
+            style="color:#ef4444;font-size:11px;text-decoration:none;padding:3px 8px;border:1px solid #3d1515;border-radius:6px;white-space:nowrap">
+            Hapus
+          </a>
+        </div>
       </td>
     </tr>`;
   }).join("");
@@ -537,33 +570,39 @@ app.get("/admin", (req, res) => {
   <style>
     *{box-sizing:border-box;margin:0;padding:0}
     body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#080e18;min-height:100vh;color:#e2e8f0}
-    .topbar{background:#0d1829;border-bottom:1px solid #1e2d45;padding:14px 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10}
+    .topbar{background:#0d1829;border-bottom:1px solid #1e2d45;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;gap:10px}
     .topbar-left{display:flex;align-items:center;gap:10px}
     .topbar-logo{font-size:22px}
     .topbar-title{font-size:15px;font-weight:700;color:#e2e8f0}
     .topbar-sub{font-size:11px;color:#475569;margin-top:1px}
-    .topbar-right{font-size:11px;color:#334155}
-    .wrap{padding:16px 16px 32px}
-    .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px}
+    .topbar-right{font-size:11px;color:#334155;text-align:right;flex-shrink:0}
+    .wrap{padding:14px 14px 40px}
+    .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
     .stat{background:#0d1829;border:1px solid #1e2d45;border-radius:14px;padding:14px 16px}
     .stat-num{font-size:26px;font-weight:700;color:#e2e8f0;line-height:1}
     .stat-label{font-size:11px;color:#475569;margin-top:4px}
     .stat-icon{font-size:20px;margin-bottom:6px}
-    .section-title{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#475569;margin-bottom:8px}
-    .table-wrap{background:#0d1829;border:1px solid #1e2d45;border-radius:14px;overflow:hidden;margin-bottom:16px;overflow-x:auto}
-    table{width:100%;border-collapse:collapse;min-width:480px}
+    .section-title{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#475569;margin-bottom:8px;margin-top:16px}
+    .box{background:#0d1829;border:1px solid #1e2d45;border-radius:14px;padding:14px 16px;margin-bottom:12px}
+    .search-wrap{position:relative;margin-bottom:10px}
+    .search-wrap input{width:100%;padding:10px 12px 10px 36px;background:#0a1422;border:1px solid #1e3a5f;border-radius:10px;color:#e2e8f0;font-size:13px;outline:none}
+    .search-wrap input:focus{border-color:#3b82f6}
+    .search-wrap input::placeholder{color:#334155}
+    .search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#334155;font-size:15px;pointer-events:none}
+    .table-wrap{background:#0d1829;border:1px solid #1e2d45;border-radius:14px;overflow:hidden;overflow-x:auto}
+    table{width:100%;border-collapse:collapse;min-width:540px}
     thead tr{background:#0a1422;border-bottom:1px solid #1e2d45}
-    th{padding:10px 14px;text-align:left;font-size:10px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.08em}
+    th{padding:10px 12px;text-align:left;font-size:10px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.08em}
     tbody tr{border-bottom:.5px solid #111d2e;transition:background .1s}
     tbody tr:last-child{border-bottom:none}
     tbody tr:hover{background:#0f1f35}
-    td{padding:11px 14px;vertical-align:middle}
-    .action-bar{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
-    .btn-primary{display:inline-flex;align-items:center;gap:6px;background:#2563eb;color:#fff;border:none;border-radius:10px;padding:10px 18px;font-size:13px;font-weight:700;text-decoration:none;cursor:pointer}
-    .btn-primary:active{opacity:.85}
-    .btn-secondary{display:inline-flex;align-items:center;gap:6px;background:#1e2d45;color:#94a3b8;border:1px solid #243447;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer}
-    .btn-secondary:active{opacity:.85}
+    td{padding:10px 12px;vertical-align:middle}
+    .action-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
+    .btn-p{display:inline-flex;align-items:center;gap:6px;background:#2563eb;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:700;text-decoration:none;cursor:pointer}
+    .btn-s{display:inline-flex;align-items:center;gap:6px;background:#1e2d45;color:#94a3b8;border:1px solid #243447;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer}
+    .btn-p:active,.btn-s:active{opacity:.85}
     .empty{text-align:center;padding:32px;color:#334155;font-size:13px}
+    .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#14532d;color:#4ade80;border:1px solid #16a34a;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:600;display:none;z-index:100}
   </style>
   </head><body>
 
@@ -575,52 +614,73 @@ app.get("/admin", (req, res) => {
         <div class="topbar-sub">Admin Dashboard</div>
       </div>
     </div>
-    <div class="topbar-right">${new Date().toLocaleString("id-ID",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"})}</div>
+    <div class="topbar-right">${new Date().toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"})}</div>
   </div>
 
   <div class="wrap">
 
     <div class="stats">
-      <div class="stat">
-        <div class="stat-icon">👥</div>
-        <div class="stat-num">${totalMember}</div>
-        <div class="stat-label">Total member</div>
-      </div>
-      <div class="stat">
-        <div class="stat-icon">📲</div>
-        <div class="stat-num">${scanHariIni}</div>
-        <div class="stat-label">Scan hari ini</div>
-      </div>
-      <div class="stat">
-        <div class="stat-icon">🎁</div>
-        <div class="stat-num">${rewardPending}</div>
-        <div class="stat-label">Reward pending</div>
-      </div>
-      <div class="stat">
-        <div class="stat-icon">🔥</div>
-        <div class="stat-num">${aktifBulanIni}</div>
-        <div class="stat-label">Aktif bulan ini</div>
-      </div>
+      <div class="stat"><div class="stat-icon">👥</div><div class="stat-num">${totalMember}</div><div class="stat-label">Total member</div></div>
+      <div class="stat"><div class="stat-icon">📲</div><div class="stat-num">${scanHariIni}</div><div class="stat-label">Scan hari ini</div></div>
+      <div class="stat"><div class="stat-icon">🎁</div><div class="stat-num">${rewardPending}</div><div class="stat-label">Reward pending</div></div>
+      <div class="stat"><div class="stat-icon">🔥</div><div class="stat-num">${aktifBulanIni}</div><div class="stat-label">Aktif bulan ini</div></div>
     </div>
 
+    <div class="section-title">Riwayat check-in hari ini</div>
+    <div class="box">${scanList}</div>
+
+    <div class="section-title">Kelola member</div>
     <div class="action-bar">
-      <a href="/admin/tambah?tk=${token}" class="btn-primary">＋ Tambah Member</a>
-      <a href="/admin/reset?tk=${token}" class="btn-secondary"
-         onclick="return confirm('Reset scan harian semua member?')">↺ Reset Scan Harian</a>
+      <a href="/admin/tambah?tk=${token}" class="btn-p">＋ Tambah Member</a>
+      <a href="/admin/reset?tk=${token}" class="btn-s" onclick="return confirm('Reset scan harian semua member?')">↺ Reset Harian</a>
     </div>
 
-    <div class="section-title">Daftar Member</div>
+    <div class="search-wrap">
+      <span class="search-icon">🔍</span>
+      <input type="text" id="cari" placeholder="Cari nama atau kode member..." oninput="filterTabel(this.value)">
+    </div>
+
     <div class="table-wrap">
-      <table>
+      <table id="tabel">
         <thead><tr>
           <th>Kode</th><th>Nama</th><th>Progress</th>
-          <th>Hari ini</th><th>Reward</th><th></th>
+          <th>Hari ini</th><th>Reward</th><th>Aksi</th>
         </tr></thead>
-        <tbody>${rows || `<tr><td colspan="6" class="empty">Belum ada member terdaftar</td></tr>`}</tbody>
+        <tbody id="tbody">${rows || `<tr><td colspan="6" class="empty">Belum ada member terdaftar</td></tr>`}</tbody>
       </table>
     </div>
 
-  </div></body></html>`);
+  </div>
+
+  <div class="toast" id="toast">✓ URL QR berhasil disalin!</div>
+
+  <script>
+  function copyUrl(url, btn) {
+    navigator.clipboard && navigator.clipboard.writeText(url).then(() => {
+      btn.textContent = "✓ Disalin";
+      btn.style.background = "#14532d";
+      btn.style.color = "#4ade80";
+      const t = document.getElementById("toast");
+      t.style.display = "block";
+      setTimeout(() => {
+        btn.textContent = "Copy QR";
+        btn.style.background = "";
+        btn.style.color = "";
+        t.style.display = "none";
+      }, 2000);
+    });
+  }
+
+  function filterTabel(q) {
+    const rows = document.querySelectorAll("#tbody tr");
+    const s = q.toLowerCase();
+    rows.forEach(r => {
+      const txt = r.textContent.toLowerCase();
+      r.style.display = (!s || txt.includes(s)) ? "" : "none";
+    });
+  }
+  </script>
+  </body></html>`);
 });
 
 // ── ADMIN LOGIN POST ──────────────────────────────────────────
@@ -629,6 +689,41 @@ app.post("/admin/login", (req, res) => {
   if (pin !== ADMIN_PIN) return res.redirect("/admin?err=1");
   const token = buatToken(pin);
   res.redirect(`/admin?tk=${token}`);
+});
+
+// ── EDIT NAMA MEMBER ─────────────────────────────────────────
+app.get("/admin/edit", (req, res) => {
+  const tk  = req.query.tk || "";
+  const pin = cekToken(tk);
+  if (!pin || pin !== ADMIN_PIN) return res.redirect("/admin");
+  const kode = (req.query.kode || "").toUpperCase();
+  const db   = bacaDB();
+  const idx  = db.members.findIndex(m => m.kode === kode);
+  if (idx === -1) return res.redirect("/admin?tk=" + tk);
+  const m = db.members[idx];
+  const { nama } = req.query;
+  if (nama && nama.trim()) {
+    m.nama = nama.trim();
+    db.members[idx] = m;
+    simpanDB(db);
+    return res.redirect("/admin?tk=" + tk);
+  }
+  res.send("<!DOCTYPE html><html lang='id'><head><meta charset='UTF-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>Edit Member</title><style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#080e18;min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}.card{background:#0d1829;border:1px solid #1e2d45;border-radius:20px;padding:28px 22px;max-width:380px;width:100%}.back{display:flex;align-items:center;gap:6px;font-size:13px;color:#3b82f6;text-decoration:none;margin-bottom:20px}h1{font-size:20px;font-weight:700;color:#e2e8f0;margin-bottom:4px}.kode-tag{font-family:monospace;font-size:12px;color:#4ade80;margin-bottom:20px;display:block}label{display:block;font-size:12px;color:#64748b;margin-bottom:6px;font-weight:500}input{width:100%;padding:13px 14px;background:#0a1422;border:1.5px solid #1e3a5f;border-radius:12px;font-size:15px;color:#e2e8f0;outline:none;margin-bottom:20px}input:focus{border-color:#3b82f6}button{width:100%;background:#2563eb;color:#fff;border:none;border-radius:12px;padding:13px;font-size:15px;font-weight:700;cursor:pointer}</style></head><body><div class='card'><a href='/admin?tk=" + tk + "' class='back'>← Kembali</a><h1>Edit Nama Member</h1><span class='kode-tag'>" + kode + "</span><form action='/admin/edit' method='get'><input type='hidden' name='tk' value='" + tk + "'><input type='hidden' name='kode' value='" + kode + "'><label>Nama Baru</label><input type='text' name='nama' value='" + m.nama.replace(/'/g, "\'") + "' required autofocus autocomplete='off'><button type='submit'>Simpan Perubahan</button></form></div></body></html>");
+});
+
+// ── KLAIM REWARD ─────────────────────────────────────────────
+app.get("/admin/klaim", (req, res) => {
+  const tk  = req.query.tk || "";
+  const pin = cekToken(tk);
+  if (!pin || pin !== ADMIN_PIN) return res.redirect("/admin");
+  const kode = (req.query.kode || "").toUpperCase();
+  const db   = bacaDB();
+  const idx  = db.members.findIndex(m => m.kode === kode);
+  if (idx !== -1 && db.members[idx].status === "GRATIS") {
+    db.members[idx].status = "-";
+    simpanDB(db);
+  }
+  res.redirect("/admin?tk=" + tk);
 });
 
 // ── HELPER: generate kode premium JMB-MMYY-XX ───────────────
