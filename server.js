@@ -566,238 +566,486 @@ app.get("/admin", (req, res) => {
   const hostBase = req.protocol + "://" + req.get("host");
 
   const rows = db.members.map(m => {
-    const pct      = Math.round(m.totalMain / BATAS_MAIN * 100);
-    const isGratis = m.status === "GRATIS";
-    const scanUrl  = hostBase + "/scan?id=" + m.kode;
-    const tglDaftar   = m.tanggalDaftar ? new Date(m.tanggalDaftar).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}) : "-";
+    const pct         = Math.round(m.totalMain / BATAS_MAIN * 100);
+    const isGratis    = m.status === "GRATIS";
+    const scanUrl     = hostBase + "/scan?id=" + m.kode;
+    const tglDaftar   = m.tanggalDaftar ? new Date(m.tanggalDaftar).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}) : "—";
     const tglTerakhir = m.tanggalScanTerakhir ? new Date(m.tanggalScanTerakhir).toLocaleDateString("id-ID",{day:"numeric",month:"short"}) : "—";
     return `<tr>
       <td>
-        <span style="font-family:monospace;font-size:12px;color:#4ade80;font-weight:600">${m.kode}</span>
-        <div style="font-size:10px;color:var(--muted)">${tglDaftar}</div>
+        <span style="font-family:monospace;font-size:12px;font-weight:700;color:var(--green)">${m.kode}</span>
+        <div style="font-size:11px;color:var(--txt3);margin-top:2px">${tglDaftar}</div>
       </td>
       <td>
         <div style="font-size:13px;font-weight:500;color:var(--txt)">${m.nama}</div>
-        <div style="font-size:10px;color:var(--muted)">Terakhir: ${tglTerakhir}</div>
+        <div style="font-size:11px;color:var(--txt3);margin-top:2px">Main terakhir: ${tglTerakhir}</div>
       </td>
       <td>
         ${isGratis
-          ? `<div><span style="background:#14532d;color:#4ade80;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700">🎁 GRATIS</span>
-             <br><a href="/admin/klaim?tk=${token}&kode=${m.kode}" onclick="return confirm('Tandai reward ${m.nama} sudah diklaim?')"
-               style="font-size:10px;color:#fbbf24;text-decoration:none;margin-top:3px;display:inline-block">Tandai klaim ↗</a></div>`
+          ? `<span class="badge badge-green">🎁 GRATIS</span>`
           : `<div>
-              <div style="background:var(--stat-bg);border-radius:4px;height:5px;width:80px;overflow:hidden;margin-bottom:3px">
-                <div style="background:#16a34a;height:100%;width:${pct}%;border-radius:4px"></div>
-              </div>
-              <span style="font-size:11px;color:#4ade80">${m.totalMain}/${BATAS_MAIN}</span>
-             </div>`
+              <div class="prog-track"><div class="prog-fill" style="width:${pct}%"></div></div>
+              <span style="font-size:11px;color:var(--green)">${m.totalMain}/${BATAS_MAIN}</span>
+            </div>`
         }
-      </td>
-      <td style="text-align:center">
-        ${m.sudahScanHariIni
-          ? `<span style="background:#14532d;color:#4ade80;padding:2px 8px;border-radius:8px;font-size:11px">✓ Hadir</span>`
-          : `<span style="color:var(--muted);font-size:12px">—</span>`
-        }
-      </td>
-      <td style="text-align:center">
-        <span style="font-size:12px;color:#fbbf24;font-weight:600">${m.totalGratis || 0}×</span>
       </td>
       <td>
-        <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
-          <button onclick="copyUrl('${scanUrl}',this)"
-            style="background:var(--btn-bg);color:#60a5fa;border:1px solid var(--brd2);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;white-space:nowrap">
-            Copy QR
-          </button>
-          <a href="/admin/edit?tk=${token}&kode=${m.kode}"
-            style="color:var(--muted);font-size:11px;text-decoration:none;padding:3px 8px;border:1px solid var(--brd);border-radius:6px;white-space:nowrap">
-            Edit
-          </a>
+        ${m.sudahScanHariIni
+          ? `<span class="badge badge-green">✓ Hadir</span>`
+          : `<span style="color:var(--txt3);font-size:12px">—</span>`
+        }
+      </td>
+      <td>
+        <span style="font-size:13px;font-weight:700;color:var(--gold)">${m.totalGratis || 0}×</span>
+      </td>
+      <td>
+        <div style="display:flex;gap:4px;align-items:center;justify-content:flex-end;flex-wrap:wrap">
+          <button onclick="copyUrl('${scanUrl}',this)" class="tbl-btn tbl-btn-blue">Copy QR</button>
+          ${isGratis ? `<a href="/admin/klaim?tk=${token}&kode=${m.kode}"
+            onclick="return confirm('Tandai reward ${m.nama} sudah diklaim?')"
+            class="tbl-btn tbl-btn-gold">Klaim</a>` : ""}
+          <a href="/admin/edit?tk=${token}&kode=${m.kode}" class="tbl-btn">Edit</a>
           <a href="/admin/hapus?tk=${token}&kode=${m.kode}"
             onclick="return confirm('Hapus member ${m.nama}?')"
-            style="color:#ef4444;font-size:11px;text-decoration:none;padding:3px 8px;border:1px solid #3d1515;border-radius:6px;white-space:nowrap">
-            Hapus
-          </a>
+            class="tbl-btn tbl-btn-red">Hapus</a>
         </div>
       </td>
     </tr>`;
   }).join("");
 
   res.send(`<!DOCTYPE html><html lang="id" data-theme="dark"><head>
-  <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Admin — ${NAMA_ARENA}</title>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0;transition:background .2s,color .2s,border-color .2s}
-    :root{
-      --bg:#080e18;--card:#0d1829;--brd:#1e2d45;--brd2:#243447;
-      --txt:#e2e8f0;--muted:#475569;--sub:#334155;
-      --stat-bg:#1a2e1e;--btn-bg:#1e2d45;--topbar:#0d1829;
-      --input-bg:#0a1422;--input-brd:#1e3a5f;
-      --th-bg:#0a1422;--tr-hover:#0f1f35;--tr-brd:#111d2e;
+    /* ── Reset & base ─────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* ── Design tokens ────────────────────────────────────── */
+    :root {
+      --ff: -apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', sans-serif;
+      --fs-xs:   11px;
+      --fs-sm:   12px;
+      --fs-base: 13px;
+      --fs-md:   14px;
+      --fs-lg:   16px;
+      --fs-xl:   20px;
+      --fs-2xl:  26px;
+      --fw-normal: 400;
+      --fw-medium: 500;
+      --fw-bold:   600;
+      --fw-black:  700;
+      --lh: 1.5;
+      --r-sm:  6px;
+      --r-md:  10px;
+      --r-lg:  14px;
+      --r-xl:  18px;
+      --sp-1: 4px;  --sp-2: 8px;  --sp-3: 12px;
+      --sp-4: 16px; --sp-5: 20px; --sp-6: 24px;
+
+      /* dark palette */
+      --bg:       #070d18;
+      --surface:  #0c1526;
+      --surface2: #111f35;
+      --border:   rgba(255,255,255,.07);
+      --border2:  rgba(255,255,255,.12);
+      --txt:      #e8edf5;
+      --txt2:     #8496b0;
+      --txt3:     #4a5e78;
+      --accent:   #3b82f6;
+      --green:    #22c55e;
+      --green-bg: rgba(34,197,94,.12);
+      --gold:     #f59e0b;
+      --gold-bg:  rgba(245,158,11,.12);
+      --red:      #ef4444;
+      --red-bg:   rgba(239,68,68,.10);
     }
-    [data-theme="light"]{
-      --bg:#f1f5f9;--card:#fff;--brd:#e2e8f0;--brd2:#cbd5e1;
-      --txt:#0f172a;--muted:#64748b;--sub:#94a3b8;
-      --stat-bg:#f0fdf4;--btn-bg:#f1f5f9;--topbar:#fff;
-      --input-bg:#f8fafc;--input-brd:#cbd5e1;
-      --th-bg:#f8fafc;--tr-hover:#f8fafc;--tr-brd:#f1f5f9;
+    [data-theme="light"] {
+      --bg:       #f4f6fa;
+      --surface:  #ffffff;
+      --surface2: #f0f4f8;
+      --border:   rgba(0,0,0,.07);
+      --border2:  rgba(0,0,0,.12);
+      --txt:      #0d1117;
+      --txt2:     #556070;
+      --txt3:     #94a3b8;
+      --accent:   #2563eb;
+      --green:    #16a34a;
+      --green-bg: rgba(22,163,74,.1);
+      --gold:     #d97706;
+      --gold-bg:  rgba(217,119,6,.1);
+      --red:      #dc2626;
+      --red-bg:   rgba(220,38,38,.08);
     }
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);min-height:100vh;color:var(--txt)}
-    .topbar{background:var(--topbar);border-bottom:1px solid var(--brd);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;gap:10px}
-    .topbar-left{display:flex;align-items:center;gap:10px}
-    .topbar-logo{font-size:22px}
-    .topbar-title{font-size:15px;font-weight:700;color:var(--txt)}
-    .topbar-sub{font-size:11px;color:var(--muted);margin-top:1px}
-    .topbar-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
-    .topbar-time{font-size:11px;color:var(--sub)}
-    .theme-btn{background:var(--btn-bg);border:1px solid var(--brd);border-radius:8px;padding:5px 10px;font-size:13px;cursor:pointer;color:var(--txt)}
-    .wrap{padding:14px 14px 40px}
-    .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
-    .stat{background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:14px 16px}
-    .stat-num{font-size:26px;font-weight:700;color:var(--txt);line-height:1}
-    .stat-label{font-size:11px;color:var(--muted);margin-top:4px}
-    .stat-icon{font-size:20px;margin-bottom:6px}
-    .sec{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;margin-top:16px}
-    .box{background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:14px 16px;margin-bottom:12px}
-    .tabs{display:flex;gap:0;border-bottom:1px solid var(--brd);margin-bottom:14px}
-    .tab{padding:8px 14px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
-    .tab.on{color:#4ade80;border-bottom-color:#4ade80}
-    .tab-panel{display:none}.tab-panel.on{display:block}
-    .search-wrap{position:relative;margin-bottom:10px}
-    .search-wrap input{width:100%;padding:10px 12px 10px 36px;background:var(--input-bg);border:1px solid var(--input-brd);border-radius:10px;color:var(--txt);font-size:13px;outline:none}
-    .search-wrap input:focus{border-color:#3b82f6}
-    .search-wrap input::placeholder{color:var(--sub)}
-    .search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--sub);font-size:15px;pointer-events:none}
-    .table-wrap{background:var(--card);border:1px solid var(--brd);border-radius:14px;overflow:hidden;overflow-x:auto}
-    table{width:100%;border-collapse:collapse;min-width:540px}
-    thead tr{background:var(--th-bg);border-bottom:1px solid var(--brd)}
-    th{padding:10px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.08em}
-    tbody tr{border-bottom:.5px solid var(--tr-brd);transition:background .1s}
-    tbody tr:last-child{border-bottom:none}
-    tbody tr:hover{background:var(--tr-hover)}
-    td{padding:10px 12px;vertical-align:middle}
-    .action-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
-    .btn-p{display:inline-flex;align-items:center;gap:6px;background:#2563eb;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:700;text-decoration:none;cursor:pointer}
-    .btn-s{display:inline-flex;align-items:center;gap:6px;background:var(--btn-bg);color:var(--muted);border:1px solid var(--brd2);border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer}
-    .btn-p:active,.btn-s:active{opacity:.85}
-    .empty{text-align:center;padding:32px;color:var(--sub);font-size:13px}
-    .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#14532d;color:#4ade80;border:1px solid #16a34a;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:600;display:none;z-index:100;white-space:nowrap}
+
+    /* ── Base ─────────────────────────────────────────────── */
+    body {
+      font-family: var(--ff);
+      font-size: var(--fs-base);
+      line-height: var(--lh);
+      color: var(--txt);
+      background: var(--bg);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Topbar ───────────────────────────────────────────── */
+    .topbar {
+      position: sticky; top: 0; z-index: 50;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      padding: var(--sp-3) var(--sp-4);
+      display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3);
+    }
+    .topbar-brand { display: flex; align-items: center; gap: var(--sp-3); }
+    .topbar-logo  { font-size: 20px; line-height: 1; }
+    .topbar-name  { font-size: var(--fs-md); font-weight: var(--fw-bold); color: var(--txt); letter-spacing: -.01em; }
+    .topbar-label { font-size: var(--fs-xs); color: var(--txt3); margin-top: 1px; }
+    .topbar-right { display: flex; align-items: center; gap: var(--sp-2); flex-shrink: 0; }
+    .topbar-time  { font-size: var(--fs-xs); color: var(--txt3); }
+    .theme-btn {
+      background: var(--surface2); border: 1px solid var(--border2);
+      border-radius: var(--r-sm); padding: 5px var(--sp-2);
+      font-size: var(--fs-sm); color: var(--txt2); cursor: pointer;
+      transition: opacity .15s;
+    }
+    .theme-btn:hover { opacity: .75; }
+
+    /* ── Page layout ──────────────────────────────────────── */
+    .page { padding: var(--sp-4); padding-bottom: 60px; max-width: 960px; margin: 0 auto; }
+
+    /* ── Section label ────────────────────────────────────── */
+    .sec-label {
+      font-size: var(--fs-xs); font-weight: var(--fw-bold);
+      letter-spacing: .08em; text-transform: uppercase;
+      color: var(--txt3); margin-bottom: var(--sp-2); margin-top: var(--sp-5);
+    }
+
+    /* ── Stat cards ───────────────────────────────────────── */
+    .stats { display: grid; grid-template-columns: repeat(2,1fr); gap: var(--sp-2); margin-bottom: var(--sp-4); }
+    .stat-card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r-lg); padding: var(--sp-3) var(--sp-4);
+    }
+    .stat-icon  { font-size: 18px; margin-bottom: var(--sp-1); }
+    .stat-num   { font-size: var(--fs-2xl); font-weight: var(--fw-black); color: var(--txt); line-height: 1; }
+    .stat-lbl   { font-size: var(--fs-xs); color: var(--txt2); margin-top: 3px; }
+
+    /* ── Card ─────────────────────────────────────────────── */
+    .card {
+      background: var(--surface); border: 1px solid var(--border);
+      border-radius: var(--r-lg); overflow: hidden;
+    }
+
+    /* ── Tabs ─────────────────────────────────────────────── */
+    .tabs-wrap { display: flex; border-bottom: 1px solid var(--border); margin-bottom: 0; }
+    .tab-btn {
+      flex: 1; padding: var(--sp-3) var(--sp-2); font-size: var(--fs-sm);
+      font-weight: var(--fw-bold); color: var(--txt3); cursor: pointer;
+      border-bottom: 2px solid transparent; text-align: center;
+      transition: color .15s, border-color .15s; white-space: nowrap;
+    }
+    .tab-btn.on { color: var(--green); border-bottom-color: var(--green); }
+    .tab-body   { display: none; }
+    .tab-body.on { display: block; }
+
+    /* ── List items (scan / log / leaderboard) ────────────── */
+    .list-item {
+      display: flex; align-items: center; gap: var(--sp-3);
+      padding: var(--sp-3) var(--sp-4);
+      border-bottom: 1px solid var(--border);
+    }
+    .list-item:last-child { border-bottom: none; }
+    .list-main  { flex: 1; min-width: 0; }
+    .list-name  { font-size: var(--fs-base); font-weight: var(--fw-medium); color: var(--txt); }
+    .list-sub   { font-size: var(--fs-xs); color: var(--txt3); margin-top: 2px; font-family: monospace; }
+    .list-meta  { font-size: var(--fs-sm); color: var(--green); font-weight: var(--fw-bold); flex-shrink: 0; }
+
+    /* ── Badges ───────────────────────────────────────────── */
+    .badge {
+      display: inline-flex; align-items: center; gap: 3px;
+      padding: 2px var(--sp-2); border-radius: var(--r-sm);
+      font-size: var(--fs-xs); font-weight: var(--fw-bold); line-height: 1.4;
+    }
+    .badge-green { background: var(--green-bg); color: var(--green); }
+    .badge-gold  { background: var(--gold-bg);  color: var(--gold);  }
+    .badge-blue  { background: rgba(59,130,246,.12); color: var(--accent); }
+    .badge-red   { background: var(--red-bg);  color: var(--red);   }
+
+    /* ── Action bar ───────────────────────────────────────── */
+    .action-bar { display: flex; gap: var(--sp-2); flex-wrap: wrap; margin-bottom: var(--sp-3); }
+    .btn-primary {
+      display: inline-flex; align-items: center; gap: var(--sp-1);
+      background: var(--accent); color: #fff; border: none;
+      border-radius: var(--r-md); padding: var(--sp-2) var(--sp-4);
+      font-size: var(--fs-base); font-weight: var(--fw-bold);
+      text-decoration: none; cursor: pointer; transition: opacity .15s;
+    }
+    .btn-secondary {
+      display: inline-flex; align-items: center; gap: var(--sp-1);
+      background: var(--surface2); color: var(--txt2);
+      border: 1px solid var(--border2); border-radius: var(--r-md);
+      padding: var(--sp-2) var(--sp-3); font-size: var(--fs-base);
+      font-weight: var(--fw-bold); text-decoration: none; cursor: pointer;
+      transition: opacity .15s;
+    }
+    .btn-primary:hover, .btn-secondary:hover { opacity: .8; }
+    .btn-primary:active, .btn-secondary:active { opacity: .65; }
+
+    /* ── Search ───────────────────────────────────────────── */
+    .search-wrap { position: relative; margin-bottom: var(--sp-2); }
+    .search-input {
+      width: 100%; padding: var(--sp-2) var(--sp-3) var(--sp-2) 36px;
+      background: var(--surface); border: 1px solid var(--border2);
+      border-radius: var(--r-md); color: var(--txt);
+      font-size: var(--fs-base); outline: none; font-family: var(--ff);
+      transition: border-color .15s;
+    }
+    .search-input:focus { border-color: var(--accent); }
+    .search-input::placeholder { color: var(--txt3); }
+    .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--txt3); pointer-events: none; }
+
+    /* ── Table ────────────────────────────────────────────── */
+    .table-wrap { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; min-width: 520px; }
+    thead tr { border-bottom: 1px solid var(--border); }
+    th {
+      padding: var(--sp-2) var(--sp-4);
+      font-size: var(--fs-xs); font-weight: var(--fw-bold);
+      color: var(--txt3); text-transform: uppercase; letter-spacing: .07em;
+      text-align: left; background: var(--surface2); white-space: nowrap;
+    }
+    tbody tr { border-bottom: 1px solid var(--border); transition: background .1s; }
+    tbody tr:last-child { border-bottom: none; }
+    tbody tr:hover { background: var(--surface2); }
+    td { padding: var(--sp-3) var(--sp-4); vertical-align: middle; }
+
+    /* ── Table action buttons ─────────────────────────────── */
+    .tbl-btn {
+      display: inline-block; padding: 3px var(--sp-2);
+      border-radius: var(--r-sm); font-size: var(--fs-xs);
+      font-weight: var(--fw-bold); cursor: pointer; text-decoration: none;
+      border: 1px solid var(--border2); color: var(--txt2);
+      background: var(--surface2); transition: opacity .15s; white-space: nowrap;
+    }
+    .tbl-btn:hover { opacity: .75; }
+    .tbl-btn-blue  { color: var(--accent); border-color: rgba(59,130,246,.25); background: rgba(59,130,246,.08); }
+    .tbl-btn-red   { color: var(--red);    border-color: rgba(239,68,68,.25);  background: var(--red-bg); }
+    .tbl-btn-gold  { color: var(--gold);   border-color: rgba(245,158,11,.25); background: var(--gold-bg); }
+
+    /* ── Progress bar ─────────────────────────────────────── */
+    .prog-track { background: var(--border2); border-radius: 99px; height: 5px; width: 72px; overflow: hidden; margin-bottom: 4px; }
+    .prog-fill  { height: 100%; border-radius: 99px; background: var(--green); }
+
+    /* ── Empty state ──────────────────────────────────────── */
+    .empty-state { text-align: center; padding: var(--sp-6); color: var(--txt3); font-size: var(--fs-sm); }
+
+    /* ── Leaderboard rank ─────────────────────────────────── */
+    .lb-rank { font-size: 20px; width: 32px; text-align: center; flex-shrink: 0; }
+    .lb-score { font-size: var(--fs-md); font-weight: var(--fw-black); color: var(--green); line-height: 1; }
+    .lb-score-lbl { font-size: var(--fs-xs); color: var(--txt3); font-weight: var(--fw-normal); }
+
+    /* ── Toast ────────────────────────────────────────────── */
+    .toast {
+      position: fixed; bottom: var(--sp-5); left: 50%; transform: translateX(-50%);
+      background: var(--green-bg); color: var(--green);
+      border: 1px solid rgba(34,197,94,.3); border-radius: var(--r-md);
+      padding: var(--sp-2) var(--sp-5); font-size: var(--fs-sm); font-weight: var(--fw-bold);
+      display: none; z-index: 200; white-space: nowrap; pointer-events: none;
+    }
   </style>
   </head><body>
 
-  <div class="topbar">
-    <div class="topbar-left">
+  <!-- ── Topbar ─────────────────────────────────────────────── -->
+  <header class="topbar">
+    <div class="topbar-brand">
       <span class="topbar-logo">🎱</span>
       <div>
-        <div class="topbar-title">${NAMA_ARENA}</div>
-        <div class="topbar-sub">Admin Dashboard</div>
+        <div class="topbar-name">${NAMA_ARENA}</div>
+        <div class="topbar-label">Admin Dashboard</div>
       </div>
     </div>
     <div class="topbar-right">
-      <span class="topbar-time">${new Date().toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"})}</span>
-      <button class="theme-btn" onclick="toggleTheme()" id="themeBtn" title="Ganti tema">🌙</button>
+      <span class="topbar-time">${new Date().toLocaleString("id-ID",{weekday:"short",day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"})}</span>
+      <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">🌙</button>
     </div>
-  </div>
+  </header>
 
-  <div class="wrap">
+  <!-- ── Page ───────────────────────────────────────────────── -->
+  <main class="page">
 
+    <!-- Stat cards -->
     <div class="stats">
-      <div class="stat"><div class="stat-icon">👥</div><div class="stat-num">${totalMember}</div><div class="stat-label">Total member</div></div>
-      <div class="stat"><div class="stat-icon">📲</div><div class="stat-num">${scanHariIni}</div><div class="stat-label">Scan hari ini</div></div>
-      <div class="stat"><div class="stat-icon">🎁</div><div class="stat-num">${rewardPending}</div><div class="stat-label">Reward pending</div></div>
-      <div class="stat"><div class="stat-icon">🔥</div><div class="stat-num">${aktifBulanIni}</div><div class="stat-label">Aktif bulan ini</div></div>
+      <div class="stat-card">
+        <div class="stat-icon">👥</div>
+        <div class="stat-num">${totalMember}</div>
+        <div class="stat-lbl">Total member</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">📲</div>
+        <div class="stat-num">${scanHariIni}</div>
+        <div class="stat-lbl">Scan hari ini</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🎁</div>
+        <div class="stat-num">${rewardPending}</div>
+        <div class="stat-lbl">Reward pending</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-icon">🔥</div>
+        <div class="stat-num">${aktifBulanIni}</div>
+        <div class="stat-lbl">Aktif bulan ini</div>
+      </div>
     </div>
 
-    <!-- TABS: Riwayat | Leaderboard | Log -->
-    <div class="tabs">
-      <div class="tab on" onclick="switchTab('scan')">📲 Hari ini</div>
-      <div class="tab" onclick="switchTab('lb')">🏆 Leaderboard</div>
-      <div class="tab" onclick="switchTab('log')">📋 Log Aktivitas</div>
+    <!-- Tabs: Hari ini | Leaderboard | Log -->
+    <div class="card" style="margin-bottom:var(--sp-4)">
+      <div class="tabs-wrap">
+        <div class="tab-btn on" onclick="switchTab('scan')">📲 Hari ini</div>
+        <div class="tab-btn"   onclick="switchTab('lb')">🏆 Leaderboard</div>
+        <div class="tab-btn"   onclick="switchTab('log')">📋 Log</div>
+      </div>
+
+      <!-- Scan hari ini -->
+      <div id="tab-scan" class="tab-body on">
+        ${db.members.filter(m=>m.sudahScanHariIni).length === 0
+          ? `<div class="empty-state">Belum ada yang check-in hari ini</div>`
+          : db.members
+              .filter(m=>m.sudahScanHariIni && m.tanggalScanTerakhir)
+              .sort((a,b)=>new Date(b.tanggalScanTerakhir)-new Date(a.tanggalScanTerakhir))
+              .map(m=>{
+                const jam=new Date(m.tanggalScanTerakhir).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"});
+                return `<div class="list-item">
+                  <div class="list-main">
+                    <div class="list-name">${m.nama}</div>
+                    <div class="list-sub">${m.kode}</div>
+                  </div>
+                  <span class="badge badge-green">${jam}</span>
+                </div>`;
+              }).join("")
+        }
+      </div>
+
+      <!-- Leaderboard -->
+      <div id="tab-lb" class="tab-body">
+        ${leaderboard.length === 0
+          ? `<div class="empty-state">Belum ada data kunjungan</div>`
+          : leaderboard.map((m,i)=>`
+            <div class="list-item">
+              <span class="lb-rank">${medals[i]}</span>
+              <div class="list-main">
+                <div class="list-name">${m.nama}</div>
+                <div class="list-sub">${m.kode}</div>
+              </div>
+              <div style="text-align:right;flex-shrink:0">
+                <div class="lb-score">${m.totalKunjungan} <span class="lb-score-lbl">kunjungan</span></div>
+                <div style="font-size:var(--fs-xs);color:var(--txt3);margin-top:2px">${m.totalGratis||0}× reward</div>
+              </div>
+            </div>`).join("")
+        }
+      </div>
+
+      <!-- Log aktivitas -->
+      <div id="tab-log" class="tab-body">
+        ${log.length === 0
+          ? `<div class="empty-state">Belum ada aktivitas tercatat</div>`
+          : log.slice(0,30).map(l=>{
+              const tgl=new Date(l.ts).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"});
+              const badge = l.aksi==="REWARD_GRATIS"
+                ? `<span class="badge badge-gold">🎁 Reward</span>`
+                : l.aksi==="SCAN_RESET"
+                ? `<span class="badge badge-blue">↺ Reset</span>`
+                : `<span class="badge badge-green">✓ Scan</span>`;
+              return `<div class="list-item">
+                <div class="list-main">
+                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+                    <span class="list-name">${l.nama}</span>${badge}
+                  </div>
+                  <div style="font-size:var(--fs-xs);color:var(--txt3);margin-top:3px">${l.detail||""}</div>
+                </div>
+                <span style="font-size:var(--fs-xs);color:var(--txt3);flex-shrink:0;text-align:right">${tgl}</span>
+              </div>`;
+            }).join("")
+        }
+      </div>
     </div>
 
-    <div id="tab-scan" class="tab-panel on">
-      <div class="box">${scanList}</div>
-    </div>
-
-    <div id="tab-lb" class="tab-panel">
-      <div class="box">${lbRows}</div>
-    </div>
-
-    <div id="tab-log" class="tab-panel">
-      <div class="box">${logRows}</div>
-    </div>
-
-    <div class="sec">Kelola member</div>
+    <!-- Kelola member -->
+    <div class="sec-label">Kelola Member</div>
     <div class="action-bar">
-      <a href="/admin/tambah?tk=${token}" class="btn-p">＋ Tambah Member</a>
-      <a href="/admin/reset?tk=${token}" class="btn-s" onclick="return confirm('Reset scan harian semua member?')">↺ Reset Harian</a>
+      <a href="/admin/tambah?tk=${token}" class="btn-primary">＋ Tambah Member</a>
+      <a href="/admin/reset?tk=${token}" class="btn-secondary"
+         onclick="return confirm('Reset scan harian semua member?')">↺ Reset Harian</a>
     </div>
 
     <div class="search-wrap">
       <span class="search-icon">🔍</span>
-      <input type="text" id="cari" placeholder="Cari nama atau kode member..." oninput="filterTabel(this.value)">
+      <input class="search-input" type="text" id="cari"
+             placeholder="Cari nama atau kode member…" oninput="filterTabel(this.value)">
     </div>
 
-    <div class="table-wrap">
-      <table id="tabel">
-        <thead><tr>
-          <th>Kode</th><th>Nama</th><th>Progress</th>
-          <th>Hari ini</th><th>Reward</th><th>Aksi</th>
-        </tr></thead>
-        <tbody id="tbody">${rows || `<tr><td colspan="6" class="empty">Belum ada member terdaftar</td></tr>`}</tbody>
-      </table>
+    <div class="card">
+      <div class="table-wrap">
+        <table id="tabel">
+          <thead><tr>
+            <th>Kode</th>
+            <th>Nama</th>
+            <th>Progress</th>
+            <th>Status</th>
+            <th>Reward</th>
+            <th style="text-align:right">Aksi</th>
+          </tr></thead>
+          <tbody id="tbody">
+            ${rows || `<tr><td colspan="6" class="empty-state">Belum ada member terdaftar</td></tr>`}
+          </tbody>
+        </table>
+      </div>
     </div>
 
-  </div>
+  </main>
 
-  <div class="toast" id="toast">✓ URL QR berhasil disalin!</div>
+  <div class="toast" id="toast">✓ URL QR disalin!</div>
 
   <script>
-  // ── Dark/Light toggle ────────────────────────────────────────
-  const THEME_KEY = "warpat_theme";
+  const THEME_KEY = "warpat_admin_theme";
+
   function applyTheme(t) {
     document.documentElement.setAttribute("data-theme", t);
     document.getElementById("themeBtn").textContent = t === "dark" ? "🌙" : "☀️";
-    localStorage.setItem(THEME_KEY, t);
+    try { localStorage.setItem(THEME_KEY, t); } catch(e) {}
   }
   function toggleTheme() {
-    const cur = document.documentElement.getAttribute("data-theme");
-    applyTheme(cur === "dark" ? "light" : "dark");
+    applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
   }
-  // Apply saved theme on load
-  const saved = localStorage.getItem(THEME_KEY);
-  if (saved) applyTheme(saved);
+  try { const s = localStorage.getItem(THEME_KEY); if (s) applyTheme(s); } catch(e) {}
 
-  // ── Tab switcher ─────────────────────────────────────────────
   function switchTab(id) {
-    document.querySelectorAll(".tab").forEach((t,i) => {
-      const ids = ["scan","lb","log"];
-      t.classList.toggle("on", ids[i] === id);
-    });
-    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("on"));
+    const ids = ["scan","lb","log"];
+    document.querySelectorAll(".tab-btn").forEach((b,i) => b.classList.toggle("on", ids[i]===id));
+    document.querySelectorAll(".tab-body").forEach(p => p.classList.remove("on"));
     document.getElementById("tab-"+id).classList.add("on");
   }
 
-  // ── Copy QR URL ──────────────────────────────────────────────
   function copyUrl(url, btn) {
-    navigator.clipboard && navigator.clipboard.writeText(url).then(() => {
+    if (!navigator.clipboard) return;
+    navigator.clipboard.writeText(url).then(() => {
+      const prev = btn.textContent;
       btn.textContent = "✓ Disalin";
-      btn.style.background = "#14532d";
-      btn.style.color = "#4ade80";
-      const t = document.getElementById("toast");
-      t.style.display = "block";
+      btn.classList.add("badge-green");
+      const toast = document.getElementById("toast");
+      toast.style.display = "block";
       setTimeout(() => {
-        btn.textContent = "Copy QR";
-        btn.style.background = "";
-        btn.style.color = "";
-        t.style.display = "none";
+        btn.textContent = prev;
+        btn.classList.remove("badge-green");
+        toast.style.display = "none";
       }, 2000);
     });
   }
 
-  // ── Filter tabel ─────────────────────────────────────────────
   function filterTabel(q) {
+    const s = q.toLowerCase();
     document.querySelectorAll("#tbody tr").forEach(r => {
-      r.style.display = (!q || r.textContent.toLowerCase().includes(q.toLowerCase())) ? "" : "none";
+      r.style.display = (!s || r.textContent.toLowerCase().includes(s)) ? "" : "none";
     });
   }
   </script>
