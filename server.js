@@ -275,46 +275,68 @@ app.get("/admin", (req, res) => {
   </div></body></html>`);
 });
 
+// ── HELPER: generate kode otomatis BLD-0001, BLD-0002, dst ──
+function generateKode(members) {
+  // Cari nomor tertinggi yang sudah ada lalu +1
+  let max = 0;
+  members.forEach(m => {
+    const match = m.kode.match(/BLD-(\d+)/);
+    if (match) max = Math.max(max, parseInt(match[1]));
+  });
+  return `BLD-${String(max + 1).padStart(4, "0")}`;
+}
+
 app.get("/admin/tambah", (req, res) => {
-  const pin=req.query.pin||"";
-  if (pin!==ADMIN_PIN) return res.redirect("/admin");
-  const {nama,kode}=req.query;
-  if (!nama||!kode) return res.send(html("Tambah Member",`
+  const pin = req.query.pin || "";
+  if (pin !== ADMIN_PIN) return res.redirect("/admin");
+  const { nama } = req.query;
+
+  // Tampilkan form — hanya input NAMA saja
+  if (!nama) return res.send(html("Tambah Member", `
     <div class="ic" style="background:#E1F5EE;color:#1D9E75;font-size:24px">+</div>
-    <h1 style="color:#111;margin-bottom:16px">Tambah Member Baru</h1>
+    <h1 style="color:#111;margin-bottom:6px">Tambah Member Baru</h1>
+    <p class="pesan" style="margin-bottom:18px">Kode member dibuat otomatis.</p>
     <form action="/admin/tambah" method="get" style="text-align:left">
       <input type="hidden" name="pin" value="${pin}">
-      <label>Kode Member</label>
-      <input class="field" type="text" name="kode" placeholder="BLD-0001" required style="text-transform:uppercase;font-family:monospace;letter-spacing:.1em">
       <label>Nama Member</label>
-      <input class="field" type="text" name="nama" placeholder="Budi Santoso" required>
-      <button type="submit" style="width:100%;background:#1D9E75;color:#fff;border:none;border-radius:10px;padding:12px;font-size:14px;font-weight:600;cursor:pointer">Daftarkan Member</button>
+      <input class="field" type="text" name="nama" placeholder="contoh: Budi Santoso" required autofocus>
+      <button type="submit" style="width:100%;background:#1D9E75;color:#fff;border:none;border-radius:10px;padding:13px;font-size:15px;font-weight:600;cursor:pointer">Daftarkan Member</button>
     </form>
     <a href="/admin?pin=${pin}" style="display:block;text-align:center;margin-top:14px;font-size:13px;color:#888;text-decoration:none">← Dashboard</a>
   `));
 
-  const db=bacaDB(), ku=kode.trim().toUpperCase();
-  if (db.members.find(m=>m.kode===ku)) return res.send(html("Kode Ada",`
-    <div class="ic" style="background:#FCEBEB;color:#cc4444">✕</div>
-    <h1 style="color:#cc4444">Kode Sudah Ada</h1>
-    <p class="pesan">Kode <b>${ku}</b> sudah terdaftar.</p>
-    <a href="/admin/tambah?pin=${pin}" class="btn" style="background:#1D9E75;color:#fff">← Coba Lagi</a>
-  `));
+  // Generate kode otomatis
+  const db  = bacaDB();
+  const ku  = generateKode(db.members);
 
-  db.members.push({kode:ku,nama:nama.trim(),totalMain:0,tanggalMulai:null,
-    sudahScanHariIni:false,status:"-",totalGratis:0,
-    tanggalDaftar:new Date().toISOString(),tanggalScanTerakhir:null});
+  // Simpan member baru
+  db.members.push({
+    kode: ku, nama: nama.trim(), totalMain: 0,
+    tanggalMulai: null, sudahScanHariIni: false, status: "-",
+    totalGratis: 0, tanggalDaftar: new Date().toISOString(), tanggalScanTerakhir: null,
+  });
   simpanDB(db);
 
-  const scanUrl=`${req.protocol}://${req.get("host")}/scan?id=${ku}`;
-  res.send(html("Terdaftar",`
+  const scanUrl = `${req.protocol}://${req.get("host")}/scan?id=${ku}`;
+
+  // Halaman sukses — tampilkan kode & URL QR
+  res.send(html("Terdaftar", `
     <div class="ic" style="background:#E1F5EE;color:#1D9E75">✓</div>
     <h1 style="color:#085041">Member Terdaftar!</h1>
     <div class="nama">${nama.trim()}</div>
-    <div style="background:#f5f5f5;border-radius:8px;padding:8px 14px;font-family:monospace;font-size:17px;font-weight:600;color:#1D9E75;margin-bottom:14px">${ku}</div>
-    <div style="font-size:11px;color:#aaa;margin-bottom:6px">URL untuk generate QR:</div>
-    <div onclick="navigator.clipboard&&navigator.clipboard.writeText(this.textContent).then(()=>{this.style.background='#E1F5EE';this.style.color='#085041';setTimeout(()=>{this.style.background='';this.style.color=''},1500)})"
-      style="background:#f5f5f5;border-radius:8px;padding:8px 10px;font-family:monospace;font-size:10px;color:#1a73e8;word-break:break-all;text-align:left;cursor:pointer;margin-bottom:14px">${scanUrl}</div>
+
+    <div style="background:#f0faf5;border:1.5px solid #1D9E75;border-radius:10px;padding:12px 16px;margin-bottom:14px">
+      <div style="font-size:11px;color:#888;margin-bottom:4px">Kode member (auto):</div>
+      <div style="font-family:monospace;font-size:22px;font-weight:700;color:#1D9E75">${ku}</div>
+    </div>
+
+    <div style="font-size:11px;color:#aaa;margin-bottom:6px">URL untuk generate QR — tap untuk copy:</div>
+    <div id="qurl"
+      onclick="navigator.clipboard&&navigator.clipboard.writeText(this.textContent).then(()=>{this.style.background='#E1F5EE';this.style.color='#085041';setTimeout(()=>{this.style.background='#f5f5f5';this.style.color='#1a73e8'},1500)})"
+      style="background:#f5f5f5;border-radius:8px;padding:9px 10px;font-family:monospace;font-size:10px;color:#1a73e8;word-break:break-all;text-align:left;cursor:pointer;margin-bottom:4px;border:1px solid #e0e0e0"
+    >${scanUrl}</div>
+    <div style="font-size:10px;color:#ccc;margin-bottom:16px">Tap URL di atas → copy → paste ke qr-code-generator.com</div>
+
     <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
       <a href="/admin/tambah?pin=${pin}" class="btn" style="background:#f0f0f0;color:#333">+ Tambah lagi</a>
       <a href="/admin?pin=${pin}" class="btn" style="background:#1D9E75;color:#fff">Dashboard</a>
