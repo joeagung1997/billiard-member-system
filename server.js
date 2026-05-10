@@ -596,7 +596,21 @@ app.get("/admin", (req, res) => {
       </td>
       <td>
         <div style="font-size:13px;font-weight:500;color:var(--txt)">${m.nama}</div>
-        <div style="font-size:11px;color:var(--txt3);margin-top:2px;font-family:monospace">${telepon}</div>
+        <div style="display:flex;align-items:center;gap:6px;margin-top:3px">
+          <span style="font-size:11px;color:var(--txt3);font-family:monospace">${telepon}</span>
+          ${m.telepon && m.telepon !== "—"
+            ? `<a href="https://wa.me/${(m.telepon||"").replace(/[^0-9]/g,"")}"
+                target="_blank" rel="noopener"
+                title="Chat WA ${m.nama}"
+                style="display:inline-flex;align-items:center;justify-content:center;width:22px;height:22px;background:#25d366;border-radius:50%;flex-shrink:0;text-decoration:none">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg">
+                  <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+                  <path d="M12 0C5.373 0 0 5.373 0 12c0 2.115.549 4.103 1.508 5.827L0 24l6.335-1.482A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.003-1.368l-.36-.214-3.732.873.916-3.641-.235-.374A9.818 9.818 0 1112 21.818z"/>
+                </svg>
+              </a>`
+            : ""
+          }
+        </div>
       </td>
       <td>
         ${isGratis
@@ -617,12 +631,12 @@ app.get("/admin", (req, res) => {
         <span style="font-size:13px;font-weight:700;color:var(--gold)">${m.totalGratis || 0}×</span>
       </td>
       <td style="text-align:center">
-        <a href="/admin/qr/${m.kode}?tk=${token}" target="_blank"
-          style="display:inline-block">
-          <img src="/admin/qr-img/${m.kode}?tk=${token}" width="56" height="56"
-               alt="QR ${m.kode}" loading="lazy"
-               style="border-radius:6px;background:#fff;padding:3px;display:block">
-        </a>
+        <img src="/admin/qr-img/${m.kode}?tk=${token}" width="52" height="52"
+             alt="QR ${m.kode}" loading="lazy"
+             onclick="bukaModal('${m.kode}','${m.nama}','${scanUrl}','/admin/qr/${m.kode}?tk=${token}','/admin/qr-img/${m.kode}?tk=${token}')"
+             style="border-radius:8px;background:#fff;padding:3px;display:block;cursor:pointer;transition:transform .15s"
+             onmouseover="this.style.transform='scale(1.1)'"
+             onmouseout="this.style.transform='scale(1)'">
       </td>
       <td>
         <div style="display:flex;gap:4px;align-items:center;justify-content:flex-end;flex-wrap:wrap">
@@ -872,6 +886,46 @@ app.get("/admin", (req, res) => {
     .lb-score { font-size: var(--fs-md); font-weight: var(--fw-black); color: var(--green); line-height: 1; }
     .lb-score-lbl { font-size: var(--fs-xs); color: var(--txt3); font-weight: var(--fw-normal); }
 
+    /* ── Modal QR Preview ────────────────────────────────── */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; z-index: 300;
+      background: rgba(0,0,0,.75); backdrop-filter: blur(4px);
+      align-items: center; justify-content: center; padding: var(--sp-4);
+    }
+    .modal-overlay.open { display: flex; }
+    .modal-box {
+      background: var(--surface); border: 1px solid var(--border2);
+      border-radius: var(--r-xl); padding: var(--sp-5);
+      max-width: 340px; width: 100%; text-align: center;
+      animation: modalIn .2s ease;
+    }
+    @keyframes modalIn { from { transform: scale(.92); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .modal-close {
+      position: absolute; top: var(--sp-3); right: var(--sp-3);
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 50%; width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      cursor: pointer; font-size: 16px; color: var(--txt2);
+    }
+    .modal-qr-wrap {
+      background: #fff; border-radius: var(--r-lg);
+      padding: var(--sp-3); display: inline-block; margin-bottom: var(--sp-3);
+    }
+    .modal-qr-wrap img { display: block; border-radius: var(--r-sm); }
+    .modal-name { font-size: var(--fs-lg); font-weight: var(--fw-bold); color: var(--txt); margin-bottom: 4px; }
+    .modal-kode { font-family: monospace; font-size: var(--fs-sm); color: var(--green); margin-bottom: var(--sp-4); }
+    .modal-btns { display: flex; gap: var(--sp-2); justify-content: center; flex-wrap: wrap; }
+    .modal-btn {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: var(--sp-2) var(--sp-4); border-radius: var(--r-md);
+      font-size: var(--fs-sm); font-weight: var(--fw-bold); text-decoration: none;
+      cursor: pointer; border: none; transition: opacity .15s;
+    }
+    .modal-btn:hover { opacity: .8; }
+    .modal-btn-dl   { background: var(--green); color: #fff; }
+    .modal-btn-copy { background: var(--accent); color: #fff; }
+    .modal-btn-wa   { background: #25d366; color: #fff; }
+
     /* ── Toast ────────────────────────────────────────────── */
     .toast {
       position: fixed; bottom: var(--sp-5); left: 50%; transform: translateX(-50%);
@@ -1043,6 +1097,29 @@ app.get("/admin", (req, res) => {
 
   </main>
 
+  <!-- Modal QR Preview -->
+  <div class="modal-overlay" id="modalOverlay" onclick="tutupModal(event)">
+    <div class="modal-box" style="position:relative">
+      <button class="modal-close" onclick="tutupModal(null)" aria-label="Tutup">✕</button>
+      <div class="modal-qr-wrap">
+        <img id="modalQrImg" src="" width="220" height="220" alt="QR Preview">
+      </div>
+      <div class="modal-name" id="modalNama"></div>
+      <div class="modal-kode" id="modalKode"></div>
+      <div class="modal-btns">
+        <a id="modalDl"   class="modal-btn modal-btn-dl"   download>⬇ Download</a>
+        <button id="modalCopy" class="modal-btn modal-btn-copy" onclick="copyModalUrl()">Copy URL</button>
+        <a id="modalWa"   class="modal-btn modal-btn-wa"   target="_blank" rel="noopener">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="#fff" xmlns="http://www.w3.org/2000/svg">
+            <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+            <path d="M12 0C5.373 0 0 5.373 0 12c0 2.115.549 4.103 1.508 5.827L0 24l6.335-1.482A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.003-1.368l-.36-.214-3.732.873.916-3.641-.235-.374A9.818 9.818 0 1112 21.818z"/>
+          </svg>
+          WhatsApp
+        </a>
+      </div>
+    </div>
+  </div>
+
   <div class="toast" id="toast">✓ URL QR disalin!</div>
 
   <script>
@@ -1101,6 +1178,51 @@ app.get("/admin", (req, res) => {
     const emptyEl = document.getElementById("empty-filter");
     if (emptyEl) emptyEl.style.display = visible === 0 ? "block" : "none";
   }
+
+  // ── Modal QR ───────────────────────────────────────────────
+  let _modalScanUrl = "";
+
+  function bukaModal(kode, nama, scanUrl, dlUrl, imgUrl) {
+    _modalScanUrl = scanUrl;
+    document.getElementById("modalQrImg").src  = imgUrl;
+    document.getElementById("modalNama").textContent = nama;
+    document.getElementById("modalKode").textContent = kode;
+    document.getElementById("modalDl").href    = dlUrl;
+    document.getElementById("modalDl").setAttribute("download", "QR-" + kode + ".png");
+    // WA: kirim URL scan sebagai pesan WA
+    const waNum = "";  // kosong = pilih kontak sendiri
+    const waMsg = encodeURIComponent("Halo " + nama + "! Ini QR Code member billiard kamu: " + scanUrl);
+    document.getElementById("modalWa").href = "https://wa.me/" + waNum + "?text=" + waMsg;
+    document.getElementById("modalOverlay").classList.add("open");
+    document.body.style.overflow = "hidden";
+  }
+
+  function tutupModal(e) {
+    if (e && e.target !== document.getElementById("modalOverlay") && e.type !== "click") return;
+    if (e && e.currentTarget === document.getElementById("modalOverlay") && e.target !== e.currentTarget) return;
+    document.getElementById("modalOverlay").classList.remove("open");
+    document.body.style.overflow = "";
+  }
+
+  function copyModalUrl() {
+    if (!navigator.clipboard || !_modalScanUrl) return;
+    navigator.clipboard.writeText(_modalScanUrl).then(() => {
+      const btn = document.getElementById("modalCopy");
+      btn.textContent = "✓ Disalin!";
+      const toast = document.getElementById("toast");
+      toast.style.display = "block";
+      setTimeout(() => {
+        btn.innerHTML = "Copy URL";
+        toast.style.display = "none";
+      }, 2000);
+    });
+  }
+
+  // Tutup modal dengan Escape
+  document.addEventListener("keydown", e => {
+    if (e.key === "Escape") tutupModal(null);
+  });
+
   </script>
   </body></html>`);
 });
