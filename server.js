@@ -275,15 +275,33 @@ app.get("/admin", (req, res) => {
   </div></body></html>`);
 });
 
-// ── HELPER: generate kode otomatis BLD-0001, BLD-0002, dst ──
+// ── HELPER: generate kode premium JMB-MMYY-XX ───────────────
+// Format: JMB-0526-K3 (singkatan + bulan-tahun + 2 karakter acak)
+// Ganti prefix lewat Railway Variable: KODE_PREFIX (default: JMB)
+const KODE_PREFIX = process.env.KODE_PREFIX || "JMB";
+
 function generateKode(members) {
-  // Cari nomor tertinggi yang sudah ada lalu +1
-  let max = 0;
-  members.forEach(m => {
-    const match = m.kode.match(/BLD-(\d+)/);
-    if (match) max = Math.max(max, parseInt(match[1]));
-  });
-  return `BLD-${String(max + 1).padStart(4, "0")}`;
+  const now    = new Date();
+  const bulan  = String(now.getMonth() + 1).padStart(2, "0");
+  const tahun  = String(now.getFullYear()).slice(-2);
+  const period = bulan + tahun;
+  const chars  = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+  const existing = new Set(members.map(m => m.kode));
+  let kode, attempts = 0;
+  do {
+    const r1 = chars[Math.floor(Math.random() * chars.length)];
+    const r2 = chars[Math.floor(Math.random() * chars.length)];
+    kode = KODE_PREFIX + "-" + period + "-" + r1 + r2;
+    attempts++;
+    if (attempts > 500) {
+      const r3 = chars[Math.floor(Math.random() * chars.length)];
+      kode = KODE_PREFIX + "-" + period + "-" + r1 + r2 + r3;
+      break;
+    }
+  } while (existing.has(kode));
+
+  return kode;
 }
 
 app.get("/admin/tambah", (req, res) => {
