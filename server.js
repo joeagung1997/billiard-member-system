@@ -40,6 +40,25 @@ function simpanDB(data) {
 }
 if (!fs.existsSync(DB_PATH)) simpanDB({ members: [] });
 
+// ── LOG AKTIVITAS ─────────────────────────────────────────────
+const LOG_PATH = require("path").join(DATA_DIR, "log.json");
+
+function bacaLog() {
+  try { if (require("fs").existsSync(LOG_PATH)) return JSON.parse(require("fs").readFileSync(LOG_PATH,"utf8")); }
+  catch(e){}
+  return [];
+}
+function catatLog(kode, nama, aksi, detail) {
+  try {
+    const log = bacaLog();
+    log.unshift({ ts: new Date().toISOString(), kode, nama, aksi, detail: detail||"" });
+    if (log.length > 500) log.splice(500); // simpan max 500 entri
+    require("fs").writeFileSync(LOG_PATH, JSON.stringify(log), "utf8");
+  } catch(e){}
+}
+
+
+
 function formatTanggal(date) {
   return new Date(date).toLocaleString("id-ID", {
     weekday:"long", day:"numeric", month:"long", year:"numeric",
@@ -401,6 +420,7 @@ app.post("/checkin", (req, res) => {
     m.status="GRATIS"; m.tanggalMulai=today.toISOString();
     const tg=m.totalGratis, tn=m.totalMain; m.totalMain=0;
     db.members[idx]=m; simpanDB(db);
+    catatLog(kode,m.nama,"REWARD_GRATIS","Reward ke-"+tg);
     return res.send(halamanHasil("gratis",{
       judul:"Selamat! Main Gratis!", nama:m.nama,
       pesan:`${m.nama} sudah main ${tn}x! Main berikutnya GRATIS.`,
@@ -409,6 +429,7 @@ app.post("/checkin", (req, res) => {
   }
 
   m.status="-"; db.members[idx]=m; simpanDB(db);
+  catatLog(kode,m.nama,expired?"SCAN_RESET":"SCAN","Kunjungan ke-"+m.totalMain);
   return res.send(halamanHasil("sukses",{
     judul:"Check-in Berhasil!", nama:m.nama,
     pesan:expired?`Periode bonus direset. Kunjungan ke-1 periode baru!`
@@ -483,27 +504,64 @@ app.get("/admin", (req, res) => {
 
   // PIN valid — buat token baru jika belum ada
   const token = tk || buatToken(pin);
-  const db = bacaDB();
+  const db  = bacaDB();
+  const log = bacaLog();
 
   const totalMember   = db.members.length;
   const scanHariIni   = db.members.filter(m => m.sudahScanHariIni).length;
   const rewardPending = db.members.filter(m => m.status === "GRATIS").length;
   const aktifBulanIni = db.members.filter(m => m.totalMain > 0).length;
 
-  // Riwayat scan hari ini (urut jam terbaru)
+  // Riwayat scan hari ini
   const scanList = db.members
     .filter(m => m.sudahScanHariIni && m.tanggalScanTerakhir)
     .sort((a,b) => new Date(b.tanggalScanTerakhir) - new Date(a.tanggalScanTerakhir))
     .map(m => {
       const jam = new Date(m.tanggalScanTerakhir).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"});
-      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:.5px solid #111d2e">
-        <div>
-          <span style="font-size:13px;font-weight:500;color:#e2e8f0">${m.nama}</span>
-          <span style="font-size:10px;font-family:monospace;color:#334155;margin-left:8px">${m.kode}</span>
+      return `<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:.5px solid var(--brd)">
+        <div><span style="font-size:13px;font-weight:500;color:var(--txt)">${m.nama}</span>
+        <span style="font-size:10px;font-family:monospace;color:var(--muted);margin-left:8px">${m.kode}</span></div>
+        <span style="font-size:12px;color:#4ade80;font-weight:600">${jam}</span></div>`;
+    }).join("") || `<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px">Belum ada yang check-in hari ini</div>`;
+
+  // Leaderboard — top 5 by totalKunjungan
+  const leaderboard = [...db.members]
+    .map(m => ({ ...m, totalKunjungan: (m.totalMain||0) + (m.totalGratis||0) * BATAS_MAIN }))
+    .sort((a,b) => b.totalKunjungan - a.totalKunjungan)
+    .slice(0,5);
+
+  const medals = ["🥇","🥈","🥉","4️⃣","5️⃣"];
+  const lbRows = leaderboard.length === 0
+    ? `<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px">Belum ada data</div>`
+    : leaderboard.map((m,i) => `
+      <div style="display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:.5px solid var(--brd)">
+        <span style="font-size:18px;width:28px;text-align:center">${medals[i]}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;color:var(--txt);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${m.nama}</div>
+          <div style="font-size:10px;font-family:monospace;color:var(--muted)">${m.kode}</div>
         </div>
-        <span style="font-size:12px;color:#4ade80;font-weight:600">${jam}</span>
-      </div>`;
-    }).join("") || `<div style="text-align:center;padding:16px;color:#334155;font-size:13px">Belum ada yang check-in hari ini</div>`;
+        <div style="text-align:right;flex-shrink:0">
+          <div style="font-size:14px;font-weight:700;color:#4ade80">${m.totalKunjungan}<span style="font-size:10px;font-weight:400;color:var(--muted)"> kunjungan</span></div>
+          <div style="font-size:10px;color:var(--muted)">${m.totalGratis||0}× reward</div>
+        </div>
+      </div>`).join("");
+
+  // Log aktivitas — 20 terbaru
+  const logRows = log.slice(0,20).map(l => {
+    const tgl = new Date(l.ts).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"});
+    const badge = l.aksi === "REWARD_GRATIS"
+      ? `<span style="background:#14532d;color:#4ade80;padding:2px 7px;border-radius:6px;font-size:10px;font-weight:700">🎁 Reward</span>`
+      : l.aksi === "SCAN_RESET"
+      ? `<span style="background:#1e2d45;color:#60a5fa;padding:2px 7px;border-radius:6px;font-size:10px">↺ Reset</span>`
+      : `<span style="background:#1a2e1e;color:#4ade80;padding:2px 7px;border-radius:6px;font-size:10px">✓ Scan</span>`;
+    return `<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:.5px solid var(--brd)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:500;color:var(--txt)">${l.nama} ${badge}</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px">${l.detail||""}</div>
+      </div>
+      <div style="font-size:10px;color:var(--muted);flex-shrink:0;text-align:right">${tgl}</div>
+    </div>`;
+  }).join("") || `<div style="text-align:center;padding:16px;color:var(--muted);font-size:13px">Belum ada aktivitas</div>`;
 
   const hostBase = req.protocol + "://" + req.get("host");
 
@@ -511,34 +569,34 @@ app.get("/admin", (req, res) => {
     const pct      = Math.round(m.totalMain / BATAS_MAIN * 100);
     const isGratis = m.status === "GRATIS";
     const scanUrl  = hostBase + "/scan?id=" + m.kode;
-    const tglDaftar= m.tanggalDaftar ? new Date(m.tanggalDaftar).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}) : "-";
+    const tglDaftar   = m.tanggalDaftar ? new Date(m.tanggalDaftar).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}) : "-";
     const tglTerakhir = m.tanggalScanTerakhir ? new Date(m.tanggalScanTerakhir).toLocaleDateString("id-ID",{day:"numeric",month:"short"}) : "—";
     return `<tr>
       <td>
         <span style="font-family:monospace;font-size:12px;color:#4ade80;font-weight:600">${m.kode}</span>
-        <br><span style="font-size:10px;color:#334155">${tglDaftar}</span>
+        <div style="font-size:10px;color:var(--muted)">${tglDaftar}</div>
       </td>
       <td>
-        <div style="font-size:13px;font-weight:500;color:#e2e8f0">${m.nama}</div>
-        <div style="font-size:10px;color:#475569;margin-top:1px">Terakhir: ${tglTerakhir}</div>
+        <div style="font-size:13px;font-weight:500;color:var(--txt)">${m.nama}</div>
+        <div style="font-size:10px;color:var(--muted)">Terakhir: ${tglTerakhir}</div>
       </td>
       <td>
         ${isGratis
-          ? `<span style="background:#14532d;color:#4ade80;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700">🎁 GRATIS</span>
+          ? `<div><span style="background:#14532d;color:#4ade80;padding:3px 10px;border-radius:10px;font-size:11px;font-weight:700">🎁 GRATIS</span>
              <br><a href="/admin/klaim?tk=${token}&kode=${m.kode}" onclick="return confirm('Tandai reward ${m.nama} sudah diklaim?')"
-               style="font-size:10px;color:#fbbf24;text-decoration:none;margin-top:3px;display:inline-block">Tandai klaim ↗</a>`
+               style="font-size:10px;color:#fbbf24;text-decoration:none;margin-top:3px;display:inline-block">Tandai klaim ↗</a></div>`
           : `<div>
-              <div style="background:#1a2e1e;border-radius:4px;height:5px;width:80px;overflow:hidden;margin-bottom:3px">
+              <div style="background:var(--stat-bg);border-radius:4px;height:5px;width:80px;overflow:hidden;margin-bottom:3px">
                 <div style="background:#16a34a;height:100%;width:${pct}%;border-radius:4px"></div>
               </div>
               <span style="font-size:11px;color:#4ade80">${m.totalMain}/${BATAS_MAIN}</span>
-            </div>`
+             </div>`
         }
       </td>
       <td style="text-align:center">
         ${m.sudahScanHariIni
           ? `<span style="background:#14532d;color:#4ade80;padding:2px 8px;border-radius:8px;font-size:11px">✓ Hadir</span>`
-          : `<span style="color:#334155;font-size:12px">—</span>`
+          : `<span style="color:var(--muted);font-size:12px">—</span>`
         }
       </td>
       <td style="text-align:center">
@@ -547,11 +605,11 @@ app.get("/admin", (req, res) => {
       <td>
         <div style="display:flex;flex-direction:column;gap:4px;align-items:flex-end">
           <button onclick="copyUrl('${scanUrl}',this)"
-            style="background:#1e2d45;color:#60a5fa;border:1px solid #243447;border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;white-space:nowrap">
+            style="background:var(--btn-bg);color:#60a5fa;border:1px solid var(--brd2);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer;white-space:nowrap">
             Copy QR
           </button>
           <a href="/admin/edit?tk=${token}&kode=${m.kode}"
-            style="color:#94a3b8;font-size:11px;text-decoration:none;padding:3px 8px;border:1px solid #1e2d45;border-radius:6px;white-space:nowrap">
+            style="color:var(--muted);font-size:11px;text-decoration:none;padding:3px 8px;border:1px solid var(--brd);border-radius:6px;white-space:nowrap">
             Edit
           </a>
           <a href="/admin/hapus?tk=${token}&kode=${m.kode}"
@@ -564,57 +622,80 @@ app.get("/admin", (req, res) => {
     </tr>`;
   }).join("");
 
-  res.send(`<!DOCTYPE html><html lang="id"><head>
+  res.send(`<!DOCTYPE html><html lang="id" data-theme="dark"><head>
   <meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Admin — ${NAMA_ARENA}</title>
   <style>
-    *{box-sizing:border-box;margin:0;padding:0}
-    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#080e18;min-height:100vh;color:#e2e8f0}
-    .topbar{background:#0d1829;border-bottom:1px solid #1e2d45;padding:12px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;gap:10px}
+    *{box-sizing:border-box;margin:0;padding:0;transition:background .2s,color .2s,border-color .2s}
+    :root{
+      --bg:#080e18;--card:#0d1829;--brd:#1e2d45;--brd2:#243447;
+      --txt:#e2e8f0;--muted:#475569;--sub:#334155;
+      --stat-bg:#1a2e1e;--btn-bg:#1e2d45;--topbar:#0d1829;
+      --input-bg:#0a1422;--input-brd:#1e3a5f;
+      --th-bg:#0a1422;--tr-hover:#0f1f35;--tr-brd:#111d2e;
+    }
+    [data-theme="light"]{
+      --bg:#f1f5f9;--card:#fff;--brd:#e2e8f0;--brd2:#cbd5e1;
+      --txt:#0f172a;--muted:#64748b;--sub:#94a3b8;
+      --stat-bg:#f0fdf4;--btn-bg:#f1f5f9;--topbar:#fff;
+      --input-bg:#f8fafc;--input-brd:#cbd5e1;
+      --th-bg:#f8fafc;--tr-hover:#f8fafc;--tr-brd:#f1f5f9;
+    }
+    body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:var(--bg);min-height:100vh;color:var(--txt)}
+    .topbar{background:var(--topbar);border-bottom:1px solid var(--brd);padding:12px 16px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:10;gap:10px}
     .topbar-left{display:flex;align-items:center;gap:10px}
     .topbar-logo{font-size:22px}
-    .topbar-title{font-size:15px;font-weight:700;color:#e2e8f0}
-    .topbar-sub{font-size:11px;color:#475569;margin-top:1px}
-    .topbar-right{font-size:11px;color:#334155;text-align:right;flex-shrink:0}
+    .topbar-title{font-size:15px;font-weight:700;color:var(--txt)}
+    .topbar-sub{font-size:11px;color:var(--muted);margin-top:1px}
+    .topbar-right{display:flex;align-items:center;gap:10px;flex-shrink:0}
+    .topbar-time{font-size:11px;color:var(--sub)}
+    .theme-btn{background:var(--btn-bg);border:1px solid var(--brd);border-radius:8px;padding:5px 10px;font-size:13px;cursor:pointer;color:var(--txt)}
     .wrap{padding:14px 14px 40px}
     .stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:14px}
-    .stat{background:#0d1829;border:1px solid #1e2d45;border-radius:14px;padding:14px 16px}
-    .stat-num{font-size:26px;font-weight:700;color:#e2e8f0;line-height:1}
-    .stat-label{font-size:11px;color:#475569;margin-top:4px}
+    .stat{background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:14px 16px}
+    .stat-num{font-size:26px;font-weight:700;color:var(--txt);line-height:1}
+    .stat-label{font-size:11px;color:var(--muted);margin-top:4px}
     .stat-icon{font-size:20px;margin-bottom:6px}
-    .section-title{font-size:11px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#475569;margin-bottom:8px;margin-top:16px}
-    .box{background:#0d1829;border:1px solid #1e2d45;border-radius:14px;padding:14px 16px;margin-bottom:12px}
+    .sec{font-size:11px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-bottom:8px;margin-top:16px}
+    .box{background:var(--card);border:1px solid var(--brd);border-radius:14px;padding:14px 16px;margin-bottom:12px}
+    .tabs{display:flex;gap:0;border-bottom:1px solid var(--brd);margin-bottom:14px}
+    .tab{padding:8px 14px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap}
+    .tab.on{color:#4ade80;border-bottom-color:#4ade80}
+    .tab-panel{display:none}.tab-panel.on{display:block}
     .search-wrap{position:relative;margin-bottom:10px}
-    .search-wrap input{width:100%;padding:10px 12px 10px 36px;background:#0a1422;border:1px solid #1e3a5f;border-radius:10px;color:#e2e8f0;font-size:13px;outline:none}
+    .search-wrap input{width:100%;padding:10px 12px 10px 36px;background:var(--input-bg);border:1px solid var(--input-brd);border-radius:10px;color:var(--txt);font-size:13px;outline:none}
     .search-wrap input:focus{border-color:#3b82f6}
-    .search-wrap input::placeholder{color:#334155}
-    .search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:#334155;font-size:15px;pointer-events:none}
-    .table-wrap{background:#0d1829;border:1px solid #1e2d45;border-radius:14px;overflow:hidden;overflow-x:auto}
+    .search-wrap input::placeholder{color:var(--sub)}
+    .search-icon{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--sub);font-size:15px;pointer-events:none}
+    .table-wrap{background:var(--card);border:1px solid var(--brd);border-radius:14px;overflow:hidden;overflow-x:auto}
     table{width:100%;border-collapse:collapse;min-width:540px}
-    thead tr{background:#0a1422;border-bottom:1px solid #1e2d45}
-    th{padding:10px 12px;text-align:left;font-size:10px;font-weight:700;color:#334155;text-transform:uppercase;letter-spacing:.08em}
-    tbody tr{border-bottom:.5px solid #111d2e;transition:background .1s}
+    thead tr{background:var(--th-bg);border-bottom:1px solid var(--brd)}
+    th{padding:10px 12px;text-align:left;font-size:10px;font-weight:700;color:var(--sub);text-transform:uppercase;letter-spacing:.08em}
+    tbody tr{border-bottom:.5px solid var(--tr-brd);transition:background .1s}
     tbody tr:last-child{border-bottom:none}
-    tbody tr:hover{background:#0f1f35}
+    tbody tr:hover{background:var(--tr-hover)}
     td{padding:10px 12px;vertical-align:middle}
     .action-bar{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}
     .btn-p{display:inline-flex;align-items:center;gap:6px;background:#2563eb;color:#fff;border:none;border-radius:10px;padding:10px 16px;font-size:13px;font-weight:700;text-decoration:none;cursor:pointer}
-    .btn-s{display:inline-flex;align-items:center;gap:6px;background:#1e2d45;color:#94a3b8;border:1px solid #243447;border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer}
+    .btn-s{display:inline-flex;align-items:center;gap:6px;background:var(--btn-bg);color:var(--muted);border:1px solid var(--brd2);border-radius:10px;padding:10px 14px;font-size:13px;font-weight:600;text-decoration:none;cursor:pointer}
     .btn-p:active,.btn-s:active{opacity:.85}
-    .empty{text-align:center;padding:32px;color:#334155;font-size:13px}
-    .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#14532d;color:#4ade80;border:1px solid #16a34a;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:600;display:none;z-index:100}
+    .empty{text-align:center;padding:32px;color:var(--sub);font-size:13px}
+    .toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%);background:#14532d;color:#4ade80;border:1px solid #16a34a;border-radius:10px;padding:10px 20px;font-size:13px;font-weight:600;display:none;z-index:100;white-space:nowrap}
   </style>
   </head><body>
 
   <div class="topbar">
     <div class="topbar-left">
-      <div class="topbar-logo">🎱</div>
+      <span class="topbar-logo">🎱</span>
       <div>
         <div class="topbar-title">${NAMA_ARENA}</div>
         <div class="topbar-sub">Admin Dashboard</div>
       </div>
     </div>
-    <div class="topbar-right">${new Date().toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"})}</div>
+    <div class="topbar-right">
+      <span class="topbar-time">${new Date().toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"})}</span>
+      <button class="theme-btn" onclick="toggleTheme()" id="themeBtn" title="Ganti tema">🌙</button>
+    </div>
   </div>
 
   <div class="wrap">
@@ -626,10 +707,26 @@ app.get("/admin", (req, res) => {
       <div class="stat"><div class="stat-icon">🔥</div><div class="stat-num">${aktifBulanIni}</div><div class="stat-label">Aktif bulan ini</div></div>
     </div>
 
-    <div class="section-title">Riwayat check-in hari ini</div>
-    <div class="box">${scanList}</div>
+    <!-- TABS: Riwayat | Leaderboard | Log -->
+    <div class="tabs">
+      <div class="tab on" onclick="switchTab('scan')">📲 Hari ini</div>
+      <div class="tab" onclick="switchTab('lb')">🏆 Leaderboard</div>
+      <div class="tab" onclick="switchTab('log')">📋 Log Aktivitas</div>
+    </div>
 
-    <div class="section-title">Kelola member</div>
+    <div id="tab-scan" class="tab-panel on">
+      <div class="box">${scanList}</div>
+    </div>
+
+    <div id="tab-lb" class="tab-panel">
+      <div class="box">${lbRows}</div>
+    </div>
+
+    <div id="tab-log" class="tab-panel">
+      <div class="box">${logRows}</div>
+    </div>
+
+    <div class="sec">Kelola member</div>
     <div class="action-bar">
       <a href="/admin/tambah?tk=${token}" class="btn-p">＋ Tambah Member</a>
       <a href="/admin/reset?tk=${token}" class="btn-s" onclick="return confirm('Reset scan harian semua member?')">↺ Reset Harian</a>
@@ -655,6 +752,32 @@ app.get("/admin", (req, res) => {
   <div class="toast" id="toast">✓ URL QR berhasil disalin!</div>
 
   <script>
+  // ── Dark/Light toggle ────────────────────────────────────────
+  const THEME_KEY = "warpat_theme";
+  function applyTheme(t) {
+    document.documentElement.setAttribute("data-theme", t);
+    document.getElementById("themeBtn").textContent = t === "dark" ? "🌙" : "☀️";
+    localStorage.setItem(THEME_KEY, t);
+  }
+  function toggleTheme() {
+    const cur = document.documentElement.getAttribute("data-theme");
+    applyTheme(cur === "dark" ? "light" : "dark");
+  }
+  // Apply saved theme on load
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved) applyTheme(saved);
+
+  // ── Tab switcher ─────────────────────────────────────────────
+  function switchTab(id) {
+    document.querySelectorAll(".tab").forEach((t,i) => {
+      const ids = ["scan","lb","log"];
+      t.classList.toggle("on", ids[i] === id);
+    });
+    document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("on"));
+    document.getElementById("tab-"+id).classList.add("on");
+  }
+
+  // ── Copy QR URL ──────────────────────────────────────────────
   function copyUrl(url, btn) {
     navigator.clipboard && navigator.clipboard.writeText(url).then(() => {
       btn.textContent = "✓ Disalin";
@@ -671,12 +794,10 @@ app.get("/admin", (req, res) => {
     });
   }
 
+  // ── Filter tabel ─────────────────────────────────────────────
   function filterTabel(q) {
-    const rows = document.querySelectorAll("#tbody tr");
-    const s = q.toLowerCase();
-    rows.forEach(r => {
-      const txt = r.textContent.toLowerCase();
-      r.style.display = (!s || txt.includes(s)) ? "" : "none";
+    document.querySelectorAll("#tbody tr").forEach(r => {
+      r.style.display = (!q || r.textContent.toLowerCase().includes(q.toLowerCase())) ? "" : "none";
     });
   }
   </script>
