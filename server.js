@@ -926,6 +926,54 @@ app.get("/admin", (req, res) => {
     .modal-btn-copy { background: var(--accent); color: #fff; }
     .modal-btn-wa   { background: #25d366; color: #fff; }
 
+    /* ── Pagination ──────────────────────────────────────── */
+    .pg-wrap {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: var(--sp-3) var(--sp-4); border-top: 1px solid var(--border);
+      flex-wrap: wrap; gap: var(--sp-2);
+    }
+    .pg-info  { font-size: var(--fs-xs); color: var(--txt3); }
+    .pg-btns  { display: flex; gap: 4px; align-items: center; }
+    .pg-btn {
+      min-width: 30px; height: 30px; padding: 0 var(--sp-1);
+      border-radius: var(--r-sm); border: 1px solid var(--border2);
+      background: var(--surface2); color: var(--txt2);
+      font-size: var(--fs-xs); font-weight: var(--fw-bold);
+      cursor: pointer; display: flex; align-items: center; justify-content: center;
+      transition: all .15s;
+    }
+    .pg-btn:hover:not(:disabled) { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .pg-btn.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+    .pg-btn:disabled { opacity: .35; cursor: default; }
+    .pg-size-select {
+      padding: 4px var(--sp-2); background: var(--surface2);
+      border: 1px solid var(--border2); border-radius: var(--r-sm);
+      color: var(--txt2); font-size: var(--fs-xs); outline: none; cursor: pointer;
+    }
+
+    /* ── Filter summary ───────────────────────────────────── */
+    .filter-summary {
+      font-size: var(--fs-xs); color: var(--txt3);
+      padding: var(--sp-2) var(--sp-4); border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: space-between; gap: var(--sp-2);
+    }
+    .filter-badge {
+      display: inline-flex; align-items: center; gap: 4px;
+      background: var(--green-bg); color: var(--green);
+      padding: 2px var(--sp-2); border-radius: var(--r-sm); font-size: var(--fs-xs); font-weight: var(--fw-bold);
+    }
+
+    /* ── Show all button ─────────────────────────────────── */
+    .show-all-btn {
+      display: block; width: 100%;
+      padding: var(--sp-3); border: none;
+      border-top: 1px solid var(--border);
+      background: var(--surface2); color: var(--accent);
+      font-size: var(--fs-sm); font-weight: var(--fw-bold);
+      cursor: pointer; transition: background .15s;
+    }
+    .show-all-btn:hover { background: var(--surface); }
+
     /* ── Toast ────────────────────────────────────────────── */
     .toast {
       position: fixed; bottom: var(--sp-5); left: 50%; transform: translateX(-50%);
@@ -987,72 +1035,25 @@ app.get("/admin", (req, res) => {
         <div class="tab-btn"   onclick="switchTab('log')">📋 Log</div>
       </div>
 
-      <!-- Scan hari ini -->
       <div id="tab-scan" class="tab-body on">
-        ${db.members.filter(m=>m.sudahScanHariIni).length === 0
-          ? `<div class="empty-state">Belum ada yang check-in hari ini</div>`
-          : db.members
-              .filter(m=>m.sudahScanHariIni && m.tanggalScanTerakhir)
-              .sort((a,b)=>new Date(b.tanggalScanTerakhir)-new Date(a.tanggalScanTerakhir))
-              .map(m=>{
-                const jam=new Date(m.tanggalScanTerakhir).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"});
-                return `<div class="list-item">
-                  <div class="list-main">
-                    <div class="list-name">${m.nama}</div>
-                    <div class="list-sub">${m.kode}</div>
-                  </div>
-                  <span class="badge badge-green">${jam}</span>
-                </div>`;
-              }).join("")
-        }
+        <div id="scan-list"></div>
+        <button id="scan-showbtn" class="show-all-btn" style="display:none"></button>
       </div>
-
-      <!-- Leaderboard -->
       <div id="tab-lb" class="tab-body">
-        ${leaderboard.length === 0
-          ? `<div class="empty-state">Belum ada data kunjungan</div>`
-          : leaderboard.map((m,i)=>`
-            <div class="list-item">
-              <span class="lb-rank">${medals[i]}</span>
-              <div class="list-main">
-                <div class="list-name">${m.nama}</div>
-                <div class="list-sub">${m.kode}</div>
-              </div>
-              <div style="text-align:right;flex-shrink:0">
-                <div class="lb-score">${m.totalKunjungan} <span class="lb-score-lbl">kunjungan</span></div>
-                <div style="font-size:var(--fs-xs);color:var(--txt3);margin-top:2px">${m.totalGratis||0}× reward</div>
-              </div>
-            </div>`).join("")
-        }
+        <div id="lb-list"></div>
+        <button id="lb-showbtn" class="show-all-btn" style="display:none"></button>
       </div>
-
-      <!-- Log aktivitas -->
       <div id="tab-log" class="tab-body">
-        ${log.length === 0
-          ? `<div class="empty-state">Belum ada aktivitas tercatat</div>`
-          : log.slice(0,30).map(l=>{
-              const tgl=new Date(l.ts).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"});
-              const badge = l.aksi==="REWARD_GRATIS"
-                ? `<span class="badge badge-gold">🎁 Reward</span>`
-                : l.aksi==="SCAN_RESET"
-                ? `<span class="badge badge-blue">↺ Reset</span>`
-                : `<span class="badge badge-green">✓ Scan</span>`;
-              return `<div class="list-item">
-                <div class="list-main">
-                  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
-                    <span class="list-name">${l.nama}</span>${badge}
-                  </div>
-                  <div style="font-size:var(--fs-xs);color:var(--txt3);margin-top:3px">${l.detail||""}</div>
-                </div>
-                <span style="font-size:var(--fs-xs);color:var(--txt3);flex-shrink:0;text-align:right">${tgl}</span>
-              </div>`;
-            }).join("")
-        }
+        <div id="log-list"></div>
+        <button id="log-showbtn" class="show-all-btn" style="display:none"></button>
       </div>
     </div>
 
     <!-- Kelola member -->
-    <div class="sec-label">Kelola Member</div>
+    <div class="sec-label" style="display:flex;align-items:center;justify-content:space-between">
+      <span>Kelola Member</span>
+      <span id="member-count-badge" class="filter-badge" style="display:none"></span>
+    </div>
     <div class="action-bar">
       <a href="/admin/tambah?tk=${token}" class="btn-primary">＋ Tambah Member</a>
       <a href="/admin/reset?tk=${token}" class="btn-secondary"
@@ -1060,20 +1061,29 @@ app.get("/admin", (req, res) => {
     </div>
 
     <!-- Filter & search bar -->
-    <div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-2);flex-wrap:wrap">
-      <div class="search-wrap" style="flex:1;min-width:180px;margin-bottom:0">
+    <div style="display:flex;gap:var(--sp-2);margin-bottom:var(--sp-2);flex-wrap:wrap;align-items:center">
+      <div class="search-wrap" style="flex:1;min-width:160px;margin-bottom:0">
         <span class="search-icon">🔍</span>
         <input class="search-input" type="text" id="cari"
-               placeholder="Cari nama, kode, atau no. HP…" oninput="filterTabel()">
+               placeholder="Cari nama, kode, atau no. HP…" oninput="filterMember()">
       </div>
-      <select id="filterBulan" onchange="filterTabel()"
+      <select id="filterBulan" onchange="filterMember()"
         style="padding:var(--sp-2) var(--sp-3);background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-md);color:var(--txt);font-size:var(--fs-base);outline:none;cursor:pointer;font-family:var(--ff)">
         <option value="">Semua bulan</option>
         ${filterBulanOpts}
       </select>
+      <select id="filterStatus" onchange="filterMember()"
+        style="padding:var(--sp-2) var(--sp-3);background:var(--surface);border:1px solid var(--border2);border-radius:var(--r-md);color:var(--txt);font-size:var(--fs-base);outline:none;cursor:pointer;font-family:var(--ff)">
+        <option value="">Semua status</option>
+        <option value="hadir">Hadir hari ini</option>
+        <option value="gratis">Reward pending</option>
+        <option value="aktif">Aktif bulan ini</option>
+        <option value="nonaktif">Tidak aktif</option>
+      </select>
     </div>
 
     <div class="card">
+      <div id="tbl-filter-summary" class="filter-summary" style="display:none"></div>
       <div class="table-wrap">
         <table id="tabel">
           <thead><tr>
@@ -1085,17 +1095,63 @@ app.get("/admin", (req, res) => {
             <th style="text-align:center">QR</th>
             <th style="text-align:right">Aksi</th>
           </tr></thead>
-          <tbody id="tbody">
-            ${rows || `<tr><td colspan="6" class="empty-state">Belum ada member terdaftar</td></tr>`}
-          </tbody>
+          <tbody id="tbody"></tbody>
         </table>
+        <div id="tbl-empty" class="empty-state" style="display:none">Tidak ada member yang cocok</div>
       </div>
-      <div id="empty-filter" class="empty-state" style="display:none;border-top:1px solid var(--border)">
-        Tidak ada member di bulan ini
-      </div>
+      <div class="pg-wrap" id="member-pg"></div>
     </div>
 
   </main>
+
+  <!-- Data JSON untuk JS pagination -->
+  <script>
+  const DATA_SCAN = ${JSON.stringify(
+    db.members
+      .filter(m=>m.sudahScanHariIni && m.tanggalScanTerakhir)
+      .sort((a,b)=>new Date(b.tanggalScanTerakhir)-new Date(a.tanggalScanTerakhir))
+      .map(m=>({
+        nama: m.nama,
+        kode: m.kode,
+        jam: new Date(m.tanggalScanTerakhir).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"})
+      }))
+  )};
+
+  const DATA_LB = ${JSON.stringify(
+    [...db.members]
+      .map(m=>({nama:m.nama,kode:m.kode,total:(m.totalMain||0)+(m.totalGratis||0)*BATAS_MAIN,reward:m.totalGratis||0}))
+      .sort((a,b)=>b.total-a.total)
+  )};
+
+  const DATA_LOG = ${JSON.stringify(
+    log.map(l=>({
+      nama:l.nama,
+      aksi:l.aksi,
+      detail:l.detail||"",
+      tgl:new Date(l.ts).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"})
+    }))
+  )};
+
+  const DATA_MEMBER = ${JSON.stringify(
+    db.members.map(m=>({
+      kode: m.kode,
+      nama: m.nama,
+      telepon: m.telepon||"",
+      totalMain: m.totalMain||0,
+      totalGratis: m.totalGratis||0,
+      status: m.status||"-",
+      sudahScan: m.sudahScanHariIni||false,
+      tglDaftar: m.tanggalDaftar ? new Date(m.tanggalDaftar).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}) : "—",
+      tglTerakhir: m.tanggalScanTerakhir ? new Date(m.tanggalScanTerakhir).toLocaleDateString("id-ID",{day:"numeric",month:"short"}) : "—",
+      bulanScan: m.tanggalScanTerakhir
+        ? (()=>{const d=new Date(m.tanggalScanTerakhir);return String(d.getFullYear())+"-"+String(d.getMonth()+1).padStart(2,"0")})()
+        : ""
+    }))
+  )};
+
+  const TK = ${JSON.stringify(token)};
+  const BATAS = ${BATAS_MAIN};
+  </script>
 
   <!-- Modal QR Preview -->
   <div class="modal-overlay" id="modalOverlay" onclick="tutupModal(event)">
@@ -1123,105 +1179,372 @@ app.get("/admin", (req, res) => {
   <div class="toast" id="toast">✓ URL QR disalin!</div>
 
   <script>
-  const THEME_KEY = "warpat_admin_theme";
+  /* ================================================================
+     Dashboard JS — bersih tanpa backtick bersarang
+  ================================================================ */
 
+  // ── Theme ───────────────────────────────────────────────────────
+  var THEME_KEY = "warpat_admin_theme";
   function applyTheme(t) {
     document.documentElement.setAttribute("data-theme", t);
-    document.getElementById("themeBtn").textContent = t === "dark" ? "🌙" : "☀️";
+    document.getElementById("themeBtn").textContent = t==="dark" ? "🌙" : "☀️";
     try { localStorage.setItem(THEME_KEY, t); } catch(e) {}
   }
   function toggleTheme() {
-    applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
+    applyTheme(document.documentElement.getAttribute("data-theme")==="dark" ? "light" : "dark");
   }
-  try { const s = localStorage.getItem(THEME_KEY); if (s) applyTheme(s); } catch(e) {}
+  try { var _ts = localStorage.getItem(THEME_KEY); if (_ts) applyTheme(_ts); } catch(e) {}
 
+  // ── Tab switcher ─────────────────────────────────────────────────
   function switchTab(id) {
-    const ids = ["scan","lb","log"];
-    document.querySelectorAll(".tab-btn").forEach((b,i) => b.classList.toggle("on", ids[i]===id));
-    document.querySelectorAll(".tab-body").forEach(p => p.classList.remove("on"));
+    var ids = ["scan","lb","log"];
+    document.querySelectorAll(".tab-btn").forEach(function(b,i){ b.classList.toggle("on", ids[i]===id); });
+    document.querySelectorAll(".tab-body").forEach(function(p){ p.classList.remove("on"); });
     document.getElementById("tab-"+id).classList.add("on");
   }
 
+  // ── WA SVG icon ──────────────────────────────────────────────────
+  var WA_SVG = "<svg width='12' height='12' viewBox='0 0 24 24' fill='#fff'>"
+    + "<path d='M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z'/>"
+    + "<path d='M12 0C5.373 0 0 5.373 0 12c0 2.115.549 4.103 1.508 5.827L0 24l6.335-1.482A11.94 11.94 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.003-1.368l-.36-.214-3.732.873.916-3.641-.235-.374A9.818 9.818 0 1112 21.818z'/>"
+    + "</svg>";
+
+  // ── Render: scan list item ────────────────────────────────────────
+  function renderScan(m) {
+    return "<div class='list-item'>"
+      + "<div class='list-main'>"
+        + "<div class='list-name'>" + esc(m.nama) + "</div>"
+        + "<div class='list-sub'>" + esc(m.kode) + "</div>"
+      + "</div>"
+      + "<span class='badge badge-green'>" + esc(m.jam) + "</span>"
+    + "</div>";
+  }
+
+  // ── Render: leaderboard item ──────────────────────────────────────
+  var MEDALS = ["🥇","🥈","🥉","4️⃣","5️⃣","6️⃣","7️⃣","8️⃣","9️⃣","🔟"];
+  function renderLb(m, idx) {
+    var medal = idx < MEDALS.length ? MEDALS[idx] : (idx+1)+"";
+    return "<div class='list-item'>"
+      + "<span class='lb-rank'>" + medal + "</span>"
+      + "<div class='list-main'>"
+        + "<div class='list-name'>" + esc(m.nama) + "</div>"
+        + "<div class='list-sub'>" + esc(m.kode) + "</div>"
+      + "</div>"
+      + "<div style='text-align:right;flex-shrink:0'>"
+        + "<div class='lb-score'>" + m.total + " <span class='lb-score-lbl'>kunjungan</span></div>"
+        + "<div style='font-size:var(--fs-xs);color:var(--txt3);margin-top:2px'>" + (m.reward||0) + "× reward</div>"
+      + "</div>"
+    + "</div>";
+  }
+
+  // ── Render: log item ──────────────────────────────────────────────
+  function renderLog(l) {
+    var badge = l.aksi==="REWARD_GRATIS"
+      ? "<span class='badge badge-gold'>🎁 Reward</span>"
+      : l.aksi==="SCAN_RESET"
+      ? "<span class='badge badge-blue'>↺ Reset</span>"
+      : "<span class='badge badge-green'>✓ Scan</span>";
+    return "<div class='list-item'>"
+      + "<div class='list-main'>"
+        + "<div style='display:flex;align-items:center;gap:6px;flex-wrap:wrap'>"
+          + "<span class='list-name'>" + esc(l.nama) + "</span>" + badge
+        + "</div>"
+        + "<div style='font-size:var(--fs-xs);color:var(--txt3);margin-top:3px'>" + esc(l.detail) + "</div>"
+      + "</div>"
+      + "<span style='font-size:var(--fs-xs);color:var(--txt3);flex-shrink:0;text-align:right'>" + esc(l.tgl) + "</span>"
+    + "</div>";
+  }
+
+  // ── Render: member row ────────────────────────────────────────────
+  function renderMember(m) {
+    var pct    = Math.round((m.totalMain||0) / BATAS * 100);
+    var isG    = m.status === "GRATIS";
+    var scanUrl= location.origin + "/scan?id=" + m.kode;
+    var dlUrl  = "/admin/qr/" + m.kode + "?tk=" + TK;
+    var imgUrl = "/admin/qr-img/" + m.kode + "?tk=" + TK;
+    var waNum  = (m.telepon||"").replace(/[^0-9]/g,"");
+    var waIcon = waNum
+      ? "<a href='https://wa.me/" + waNum + "' target='_blank' rel='noopener'"
+        + " title='Chat WA " + esc(m.nama) + "'"
+        + " style='display:inline-flex;align-items:center;justify-content:center;"
+        + "width:22px;height:22px;background:#25d366;border-radius:50%;"
+        + "flex-shrink:0;text-decoration:none'>" + WA_SVG + "</a>"
+      : "";
+    var progHtml = isG
+      ? "<span class='badge badge-green'>🎁 GRATIS</span>"
+      : "<div><div class='prog-track'><div class='prog-fill' style='width:" + pct + "%'></div></div>"
+        + "<span style='font-size:11px;color:var(--green)'>" + m.totalMain + "/" + BATAS + "</span></div>";
+    var statusHtml = m.sudahScan
+      ? "<span class='badge badge-green'>✓ Hadir</span>"
+      : "<span style='color:var(--txt3);font-size:12px'>—</span>";
+    var klaimBtn = isG
+      ? "<a href='/admin/klaim?tk=" + TK + "&kode=" + m.kode + "'"
+        + " onclick='return confirm(\"Tandai reward sudah diklaim?\")'"
+        + " class='tbl-btn tbl-btn-gold'>Klaim</a>"
+      : "";
+    var qrOnclick = "bukaModal("
+      + "'" + m.kode + "',"
+      + "'" + m.nama.replace(/'/g,"\\'") + "',"
+      + "'" + scanUrl + "',"
+      + "'" + dlUrl + "',"
+      + "'" + imgUrl + "')";
+
+    return "<tr>"
+      + "<td>"
+        + "<span style='font-family:monospace;font-size:12px;font-weight:700;color:var(--green)'>" + esc(m.kode) + "</span>"
+        + "<div style='font-size:11px;color:var(--txt3);margin-top:2px'>" + esc(m.tglDaftar) + "</div>"
+      + "</td>"
+      + "<td>"
+        + "<div style='font-size:13px;font-weight:500;color:var(--txt)'>" + esc(m.nama) + "</div>"
+        + "<div style='display:flex;align-items:center;gap:6px;margin-top:3px'>"
+          + "<span style='font-size:11px;color:var(--txt3);font-family:monospace'>" + esc(m.telepon||"—") + "</span>"
+          + waIcon
+        + "</div>"
+      + "</td>"
+      + "<td>" + progHtml + "</td>"
+      + "<td>" + statusHtml + "</td>"
+      + "<td><span style='font-size:13px;font-weight:700;color:var(--gold)'>" + (m.totalGratis||0) + "×</span></td>"
+      + "<td style='text-align:center'>"
+        + "<img src='" + imgUrl + "' width='52' height='52' alt='QR' loading='lazy'"
+        + " onclick=\"" + qrOnclick + "\""
+        + " style='border-radius:8px;background:#fff;padding:3px;display:block;cursor:pointer;transition:transform .15s'"
+        + " onmouseover=\"this.style.transform='scale(1.1)'\""
+        + " onmouseout=\"this.style.transform='scale(1)'\">"
+      + "</td>"
+      + "<td>"
+        + "<div style='display:flex;gap:4px;align-items:center;justify-content:flex-end;flex-wrap:wrap'>"
+          + "<a href='" + dlUrl + "' class='tbl-btn tbl-btn-blue' download='QR-" + m.kode + ".png'>⬇ QR</a>"
+          + "<button onclick=\"copyUrl('" + scanUrl + "',this)\" class='tbl-btn tbl-btn-blue'>Copy</button>"
+          + klaimBtn
+          + "<a href='/admin/edit?tk=" + TK + "&kode=" + m.kode + "' class='tbl-btn'>Edit</a>"
+          + "<a href='/admin/hapus?tk=" + TK + "&kode=" + m.kode + "'"
+            + " onclick='return confirm(\"Hapus member " + m.nama.replace(/'/g,"\\'").replace(/"/g,"&quot;") + "?\")'"
+            + " class='tbl-btn tbl-btn-red'>Hapus</a>"
+        + "</div>"
+      + "</td>"
+    + "</tr>";
+  }
+
+  // ── Helper: escape HTML ──────────────────────────────────────────
+  function esc(s) {
+    return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  // ── Simple list renderer dengan Show All button ──────────────────
+  // Untuk tab scan, lb, log: tampil 10 item + tombol "Lihat semua"
+  function renderSimpleList(data, containerId, renderFn, showAllBtnId) {
+    var limit = 10;
+    var container = document.getElementById(containerId);
+    var btnEl     = document.getElementById(showAllBtnId);
+    var expanded  = false;
+
+    function draw() {
+      if (data.length === 0) {
+        container.innerHTML = "<div class='empty-state'>Tidak ada data</div>";
+        if (btnEl) btnEl.style.display = "none";
+        return;
+      }
+      var slice = expanded ? data : data.slice(0, limit);
+      container.innerHTML = slice.map(function(d, i) { return renderFn(d, i); }).join("");
+      if (btnEl) {
+        if (data.length <= limit) {
+          btnEl.style.display = "none";
+        } else {
+          btnEl.style.display = "block";
+          btnEl.textContent = expanded
+            ? "Sembunyikan (" + data.length + " item)"
+            : "Lihat semua " + data.length + " item";
+        }
+      }
+    }
+
+    if (btnEl) {
+      btnEl.addEventListener("click", function() {
+        expanded = !expanded;
+        draw();
+      });
+    }
+    draw();
+  }
+
+  // ── Pagination untuk tabel member ────────────────────────────────
+  var memberState = {
+    all:      DATA_MEMBER.slice(),
+    filtered: DATA_MEMBER.slice(),
+    page:     1,
+    perPage:  10
+  };
+
+  function renderMemberTable() {
+    var d     = memberState.filtered;
+    var pg    = memberState.page;
+    var pp    = memberState.perPage;
+    var total = d.length;
+    var pages = Math.max(1, Math.ceil(total / pp));
+    var start = (pg - 1) * pp;
+    var slice = d.slice(start, start + pp);
+
+    // Tbody
+    var tbody = document.getElementById("tbody");
+    if (total === 0) {
+      tbody.innerHTML = "<tr><td colspan='7'><div class='empty-state'>Tidak ada member yang cocok</div></td></tr>";
+    } else {
+      tbody.innerHTML = slice.map(function(m) { return renderMember(m); }).join("");
+    }
+
+    // Info jumlah
+    var badge = document.getElementById("member-count-badge");
+    if (badge) {
+      badge.style.display = "inline-flex";
+      badge.textContent   = total + " member";
+    }
+
+    // Pagination bar
+    var pgEl = document.getElementById("member-pg");
+    if (!pgEl) return;
+    if (total === 0 || total <= pp) { pgEl.innerHTML = ""; return; }
+
+    // Info teks
+    var infoHtml = "<div class='pg-info'>" + (start+1) + "–" + Math.min(start+pp, total) + " dari " + total
+      + " <select class='pg-size-select' id='pgSizeSelect' style='margin-left:8px'>"
+      + [10,25,50].map(function(n) {
+          return "<option value='" + n + "'" + (n===pp ? " selected" : "") + ">" + n + " / hal</option>";
+        }).join("")
+      + "</select></div>";
+
+    // Tombol halaman
+    var btnsHtml = "<div class='pg-btns'>";
+    btnsHtml += "<button class='pg-btn'" + (pg===1 ? " disabled" : "") + " onclick='goPage(" + (pg-1) + ")'>&#8249;</button>";
+
+    var maxBtn = pages;
+    if (maxBtn <= 7) {
+      for (var i=1; i<=maxBtn; i++) {
+        btnsHtml += "<button class='pg-btn" + (i===pg ? " active" : "") + "' onclick='goPage(" + i + ")'>" + i + "</button>";
+      }
+    } else {
+      var show = [1];
+      if (pg > 3) show.push("…");
+      for (var j=Math.max(2,pg-1); j<=Math.min(maxBtn-1,pg+1); j++) show.push(j);
+      if (pg < maxBtn-2) show.push("…");
+      show.push(maxBtn);
+      show.forEach(function(p) {
+        if (p==="…") btnsHtml += "<span class='pg-btn' style='cursor:default'>…</span>";
+        else btnsHtml += "<button class='pg-btn" + (p===pg ? " active" : "") + "' onclick='goPage(" + p + ")'>" + p + "</button>";
+      });
+    }
+    btnsHtml += "<button class='pg-btn'" + (pg===pages ? " disabled" : "") + " onclick='goPage(" + (pg+1) + ")'>&#8250;</button></div>";
+
+    pgEl.innerHTML = infoHtml + btnsHtml;
+
+    // Bind perPage select
+    var sel = document.getElementById("pgSizeSelect");
+    if (sel) sel.addEventListener("change", function() {
+      memberState.perPage = parseInt(this.value);
+      memberState.page = 1;
+      renderMemberTable();
+    });
+  }
+
+  function goPage(p) {
+    var pages = Math.ceil(memberState.filtered.length / memberState.perPage);
+    memberState.page = Math.max(1, Math.min(p, pages));
+    renderMemberTable();
+  }
+
+  // ── Filter member ─────────────────────────────────────────────────
+  function filterMember() {
+    var q      = (document.getElementById("cari").value||"").toLowerCase().trim();
+    var bulan  = document.getElementById("filterBulan").value;
+    var status = document.getElementById("filterStatus").value;
+
+    memberState.filtered = DATA_MEMBER.filter(function(m) {
+      var matchQ = !q || (m.nama+m.kode+(m.telepon||"")).toLowerCase().indexOf(q) !== -1;
+      var matchB = !bulan || m.bulanScan === bulan;
+      var matchS = true;
+      if (status==="hadir")    matchS = m.sudahScan === true;
+      if (status==="gratis")   matchS = m.status === "GRATIS";
+      if (status==="aktif")    matchS = (m.totalMain||0) > 0;
+      if (status==="nonaktif") matchS = (m.totalMain||0) === 0 && !m.sudahScan;
+      return matchQ && matchB && matchS;
+    });
+
+    memberState.page = 1;
+    renderMemberTable();
+
+    // Filter summary
+    var summary = document.getElementById("tbl-filter-summary");
+    if (summary) {
+      var hasFilter = q || bulan || status;
+      if (hasFilter) {
+        summary.style.display = "flex";
+        summary.innerHTML = "<span>Menampilkan <strong>" + memberState.filtered.length + "</strong> dari <strong>" + DATA_MEMBER.length + "</strong> member</span>"
+          + "<button onclick='resetFilter()' class='tbl-btn' style='padding:2px 8px'>&#10005; Reset</button>";
+      } else {
+        summary.style.display = "none";
+      }
+    }
+  }
+
+  function resetFilter() {
+    document.getElementById("cari").value = "";
+    document.getElementById("filterBulan").value = "";
+    document.getElementById("filterStatus").value = "";
+    filterMember();
+  }
+
+  // ── Copy URL ──────────────────────────────────────────────────────
   function copyUrl(url, btn) {
     if (!navigator.clipboard) return;
-    navigator.clipboard.writeText(url).then(() => {
-      const prev = btn.textContent;
-      btn.textContent = "✓ Disalin";
-      btn.classList.add("badge-green");
-      const toast = document.getElementById("toast");
+    navigator.clipboard.writeText(url).then(function() {
+      var prev = btn.textContent;
+      btn.textContent = "✓";
+      var toast = document.getElementById("toast");
       toast.style.display = "block";
-      setTimeout(() => {
-        btn.textContent = prev;
-        btn.classList.remove("badge-green");
-        toast.style.display = "none";
-      }, 2000);
+      setTimeout(function(){ btn.textContent=prev; toast.style.display="none"; }, 1800);
     });
   }
 
-  function filterTabel() {
-    const q     = (document.getElementById("cari").value || "").toLowerCase();
-    const bulan = document.getElementById("filterBulan").value;
-    let visible = 0;
-    document.querySelectorAll("#tbody tr").forEach(r => {
-      const matchQ = !q || r.textContent.toLowerCase().includes(q);
-      const rowBulan = r.getAttribute("data-bulan") || "";
-      // Cocokkan format: bulan = "2026-05", rowBulan = "05/2026" atau "2026-05"
-      let matchB = true;
-      if (bulan) {
-        const [yr, mo] = bulan.split("-");
-        matchB = rowBulan.includes(yr) && rowBulan.includes(mo);
-      }
-      const show = matchQ && matchB;
-      r.style.display = show ? "" : "none";
-      if (show) visible++;
-    });
-    const emptyEl = document.getElementById("empty-filter");
-    if (emptyEl) emptyEl.style.display = visible === 0 ? "block" : "none";
-  }
-
-  // ── Modal QR ───────────────────────────────────────────────
-  let _modalScanUrl = "";
-
+  // ── Modal QR ──────────────────────────────────────────────────────
+  var _modalUrl = "";
   function bukaModal(kode, nama, scanUrl, dlUrl, imgUrl) {
-    _modalScanUrl = scanUrl;
-    document.getElementById("modalQrImg").src  = imgUrl;
+    _modalUrl = scanUrl;
+    document.getElementById("modalQrImg").src = imgUrl;
     document.getElementById("modalNama").textContent = nama;
     document.getElementById("modalKode").textContent = kode;
-    document.getElementById("modalDl").href    = dlUrl;
-    document.getElementById("modalDl").setAttribute("download", "QR-" + kode + ".png");
-    // WA: kirim URL scan sebagai pesan WA
-    const waNum = "";  // kosong = pilih kontak sendiri
-    const waMsg = encodeURIComponent("Halo " + nama + "! Ini QR Code member billiard kamu: " + scanUrl);
-    document.getElementById("modalWa").href = "https://wa.me/" + waNum + "?text=" + waMsg;
+    document.getElementById("modalDl").href = dlUrl;
+    document.getElementById("modalDl").setAttribute("download", "QR-"+kode+".png");
+    var msg = encodeURIComponent("Halo "+nama+"! Ini QR Code member kamu: "+scanUrl);
+    document.getElementById("modalWa").href = "https://wa.me/?text="+msg;
     document.getElementById("modalOverlay").classList.add("open");
     document.body.style.overflow = "hidden";
   }
-
   function tutupModal(e) {
-    if (e && e.target !== document.getElementById("modalOverlay") && e.type !== "click") return;
-    if (e && e.currentTarget === document.getElementById("modalOverlay") && e.target !== e.currentTarget) return;
+    if (e && e.target !== document.getElementById("modalOverlay")) return;
     document.getElementById("modalOverlay").classList.remove("open");
     document.body.style.overflow = "";
   }
-
   function copyModalUrl() {
-    if (!navigator.clipboard || !_modalScanUrl) return;
-    navigator.clipboard.writeText(_modalScanUrl).then(() => {
-      const btn = document.getElementById("modalCopy");
+    if (!navigator.clipboard || !_modalUrl) return;
+    navigator.clipboard.writeText(_modalUrl).then(function() {
+      var btn = document.getElementById("modalCopy");
       btn.textContent = "✓ Disalin!";
-      const toast = document.getElementById("toast");
+      var toast = document.getElementById("toast");
       toast.style.display = "block";
-      setTimeout(() => {
-        btn.innerHTML = "Copy URL";
-        toast.style.display = "none";
-      }, 2000);
+      setTimeout(function(){ btn.textContent="Copy URL"; toast.style.display="none"; }, 2000);
     });
   }
-
-  // Tutup modal dengan Escape
-  document.addEventListener("keydown", e => {
-    if (e.key === "Escape") tutupModal(null);
+  document.addEventListener("keydown", function(e) {
+    if (e.key==="Escape") {
+      document.getElementById("modalOverlay").classList.remove("open");
+      document.body.style.overflow = "";
+    }
   });
+
+  // ── Init semua ─────────────────────────────────────────────────
+  renderSimpleList(DATA_SCAN, "scan-list", renderScan, "scan-showbtn");
+  renderSimpleList(DATA_LB,   "lb-list",   renderLb,   "lb-showbtn");
+  renderSimpleList(DATA_LOG,  "log-list",  renderLog,  "log-showbtn");
+  renderMemberTable();
 
   </script>
   </body></html>`);
